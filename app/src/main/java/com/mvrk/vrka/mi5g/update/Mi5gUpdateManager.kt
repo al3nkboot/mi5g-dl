@@ -61,12 +61,14 @@ data class UpdateUiState(
     val message: String? = null,
     val isError: Boolean = false,
     val download: UpdateDownload = UpdateDownload.Idle,
+    /** Epoch millis until which GitHub rate-limited us (0 = not limited). */
+    val rateLimitedUntil: Long = 0L,
 )
 
 /**
  * Mi5G Dl self-updater. Checks ONLY https://api.github.com/repos/al3nkboot/mi5g-dl/releases/latest
- * (private repo → needs the user's fine-grained token), downloads the arm64 APK asset through the
- * API, verifies size/SHA-256/package/versionCode/signing certificate and then hands it to the
+ * (public repo → no token needed; an optional token is only for a private repo / higher rate limit),
+ * downloads the arm64 APK via its public release URL (or the API asset URL when a token is set), verifies size/SHA-256/package/versionCode/signing certificate and then hands it to the
  * system installer.
  */
 class Mi5gUpdateManager private constructor(private val context: Context) {
@@ -92,6 +94,7 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
             hasToken = tokens.hasToken(),
             tokenHint = tokens.hint(),
             lastCheckAt = prefs.getLong("lastCheckAt", 0L),
+            rateLimitedUntil = prefs.getLong("rateLimitedUntil", 0L).takeIf { it > System.currentTimeMillis() } ?: 0L,
             installedVersionName = info?.versionName.orEmpty(),
             installedVersionCode = installedCode,
             release = release.takeIf { available },
@@ -121,13 +124,16 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
 
     /** Performs a check and returns the new state (used by the UI and the daily worker). */
     suspend fun runCheck(): UpdateUiState = withContext(Dispatchers.IO) {
-        val base = _state.value
-        val token = tokens.get()
-        if (token.isNullOrBlank()) {
+        val token = tokens.get()?.takeIf { it.isNotBlank() }
+        val base = _state.value.copy(hasToken = token != null, tokenHint = tokens.hint())
+        val now0 = System.currentTimeMillis()
+        val limitedUntil = prefs.getLong("rateLimitedUntil", 0L)
+        if (limitedUntil > now0) {
+            // Don't spend more of the (60/hour unauthenticated) quota while GitHub is still limiting us.
             return@withContext base.copy(
-                hasToken = false,
-                message = "The update repository ($REPO_LABEL) is private, so GitHub needs a read-only token. Add one below.",
+                message = UpdateRules.rateLimitMessage(limitedUntil, now0, token != null),
                 isError = true,
+                rateLimitedUntil = limitedUntil,
             )
         }
         try {
@@ -136,7 +142,9 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
             val release = UpdateRules.parseRelease(json)
                 ?: return@withContext base.copy(message = "Latest release has no Mi5G-Dl-<version>-arm64.apk asset.", isError = true)
             val manifest = release.updateJson?.let { asset ->
-                runCatching { UpdateRules.parseManifest(client.getText(asset.apiUrl, "application/octet-stream")) }.getOrNull()
+                runCatching {
+                    UpdateRules.parseManifest(client.getText(UpdateRules.downloadUrl(asset, token != null), "application/octet-stream"))
+                }.getOrNull()
             }
             val info = installedInfo()
             val installedCode = versionCodeOf(info)
@@ -147,9 +155,10 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
                 .putString("releaseJson", json)
                 .putLong("remoteVersionCode", manifest?.versionCode ?: -1L)
                 .putString("manifestSha", manifest?.sha256)
+                .remove("rateLimitedUntil")
                 .apply()
             base.copy(
-                hasToken = true,
+                rateLimitedUntil = 0L,
                 lastCheckAt = now,
                 installedVersionCode = installedCode,
                 installedVersionName = info.versionName.orEmpty(),
@@ -160,7 +169,11 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
                 isError = false,
             )
         } catch (e: GitHubClient.HttpException) {
-            base.copy(message = e.message, isError = true)
+            val retryAt = e.retryAt
+            if (retryAt != null) {
+                prefs.edit().putLong("rateLimitedUntil", retryAt).apply()
+                base.copy(message = e.message, isError = true, rateLimitedUntil = retryAt)
+            } else base.copy(message = e.message, isError = true)
         } catch (e: Exception) {
             Log.w(TAG, "Update check failed: ${e.message}")
             base.copy(message = "Update check failed: ${e.message ?: e.javaClass.simpleName}", isError = true)
@@ -175,7 +188,7 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
             .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
             .setInputData(
                 workDataOf(
-                    UpdateDownloadWorker.KEY_URL to release.apk.apiUrl,
+                    UpdateDownloadWorker.KEY_URL to UpdateRules.downloadUrl(release.apk, tokens.hasToken()),
                     UpdateDownloadWorker.KEY_NAME to release.apk.name,
                     UpdateDownloadWorker.KEY_SIZE to release.apk.size,
                     UpdateDownloadWorker.KEY_SHA to (release.apk.sha256 ?: prefs.getString("manifestSha", null)),
@@ -249,8 +262,19 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
         wm.enqueueUniquePeriodicWork(CHECK_WORK, ExistingPeriodicWorkPolicy.KEEP, request)
     }
 
+    private fun scheduleRetry(at: Long) {
+        val delay = (at - System.currentTimeMillis()).coerceAtLeast(60_000L) + 60_000L
+        val request = OneTimeWorkRequestBuilder<UpdateCheckWorker>()
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInitialDelay(delay, TimeUnit.MILLISECONDS)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(RETRY_WORK, ExistingWorkPolicy.REPLACE, request)
+    }
+
     internal fun publishBackgroundResult(result: UpdateUiState) {
         _state.value = result.copy(checking = false, download = _state.value.download)
+        // Rate limited: try once more shortly after GitHub's reset time instead of waiting a whole day.
+        if (result.rateLimitedUntil > System.currentTimeMillis()) scheduleRetry(result.rateLimitedUntil)
         val release = result.release ?: return
         if (!result.updateAvailable) return
         val key = "${release.version}/${result.remoteVersionCode}"
@@ -282,6 +306,7 @@ class Mi5gUpdateManager private constructor(private val context: Context) {
         const val REPO_LABEL = UpdateRules.REPO
         const val DOWNLOAD_WORK = "MI5G_UPDATE_DOWNLOAD"
         const val CHECK_WORK = "MI5G_UPDATE_DAILY_CHECK"
+        const val RETRY_WORK = "MI5G_UPDATE_RETRY_CHECK"
         const val CHANNEL = "mi5g_app_updates"
         const val NOTIFY_AVAILABLE = 5101
         const val NOTIFY_PROGRESS = 5102
@@ -365,8 +390,8 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) : Corouti
         val size = inputData.getLong(KEY_SIZE, 0L)
         val sha = inputData.getString(KEY_SHA)
         val code = inputData.getLong(KEY_CODE, -1L).takeIf { it > 0 }
-        if (!UpdateRules.isAllowedAssetUrl(url)) return fail("Asset URL is not from ${UpdateRules.REPO}")
-        val token = TokenStore(applicationContext).get() ?: return fail("No GitHub token saved")
+        if (!UpdateRules.isAllowedDownloadUrl(url)) return fail("Asset URL is not from ${UpdateRules.REPO}")
+        val token = TokenStore(applicationContext).get()?.takeIf { it.isNotBlank() } // optional (public repo)
         val dir = File(applicationContext.cacheDir, "updates").apply { mkdirs() }
         dir.listFiles()?.forEach { it.delete() }
         val target = File(dir, name.replace(Regex("[^A-Za-z0-9._-]"), "_"))
@@ -383,6 +408,9 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) : Corouti
                 target.delete()
                 fail(error)
             } else Result.success(workDataOf(KEY_FILE to target.absolutePath))
+        } catch (e: GitHubClient.HttpException) {
+            target.delete()
+            fail(if (e.rateLimited) e.message ?: "GitHub rate limit reached. Try again later." else e.message ?: "Download failed (HTTP ${e.code})")
         } catch (e: Exception) {
             target.delete()
             fail(e.message ?: "Download failed")
@@ -416,7 +444,6 @@ class UpdateDownloadWorker(context: Context, params: WorkerParameters) : Corouti
 class UpdateCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result {
         val manager = Mi5gUpdateManager.get(applicationContext)
-        if (!manager.tokens.hasToken()) return Result.success()
         val result = manager.runCheck()
         manager.publishBackgroundResult(result)
         return Result.success()

@@ -7,11 +7,15 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * Minimal GitHub REST client for the Mi5G Dl updater. Follows redirects manually so the token is
- * only ever sent to api.github.com (never to the signed asset-storage redirect target).
+ * Minimal GitHub client for the Mi5G Dl updater. Works without a token (public repo). Follows
+ * redirects manually so an optional token is only ever sent to api.github.com (never to github.com
+ * or the signed asset-storage redirect target).
  */
 class GitHubClient(private val token: String?) {
-    class HttpException(val code: Int, message: String) : IOException(message)
+    /** [retryAt] is set (epoch millis) when GitHub rate-limited the request. */
+    class HttpException(val code: Int, message: String, val retryAt: Long? = null) : IOException(message) {
+        val rateLimited: Boolean get() = retryAt != null
+    }
 
     fun getText(url: String, accept: String = "application/vnd.github+json"): String =
         open(url, accept) { conn -> conn.inputStream.bufferedReader().use { it.readText() } }
@@ -65,6 +69,11 @@ class GitHubClient(private val token: String?) {
                     code in setOf(301, 302, 303, 307, 308) -> {
                         val location = conn.getHeaderField("Location") ?: throw IOException("Redirect without Location")
                         current = URL(url, location).toString()
+                    }
+                    UpdateRules.isRateLimited(code, conn.getHeaderField("x-ratelimit-remaining"), conn.getHeaderField("retry-after")) -> {
+                        val now = System.currentTimeMillis()
+                        val retryAt = UpdateRules.rateLimitRetryAt(now, conn.getHeaderField("x-ratelimit-reset"), conn.getHeaderField("retry-after"))
+                        throw HttpException(code, UpdateRules.rateLimitMessage(retryAt, now, !token.isNullOrBlank()), retryAt)
                     }
                     else -> throw HttpException(code, UpdateRules.explainHttp(code, !token.isNullOrBlank()))
                 }

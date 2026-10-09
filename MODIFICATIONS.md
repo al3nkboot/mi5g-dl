@@ -33,6 +33,14 @@ All new code is in `app/src/main/java/com/mvrk/vrka/mi5g/` (GPL-3.0).
 | `SettingsRepository.kt`, `SettingsScreen.kt` | New settings (skip share sheet, precise trim default, daily update check), sync export/apply, and new Settings sections |
 | `AndroidManifest.xml` | `ShareActivity` added. The SEND filter moved off `MainActivity`. `REQUEST_INSTALL_PACKAGES` added |
 
+## 1.1.1 (versionCode 3), 2026-10-09
+
+| Area | Change |
+|---|---|
+| `mi5g/update/UpdateRules.kt` | Validates the public `browser_download_url` (must point to this repo, this tag and this asset). Chooses the download URL based on whether a token is set. Detects rate limits (403 with `x-ratelimit-remaining: 0`/`retry-after`, or 429) and works out when to retry. Error messages no longer assume the repo is private. |
+| `mi5g/update/GitHubClient.kt`, `Mi5gUpdateManager.kt` | Checks and downloads no longer need a token. Rate-limit state is persisted, so no requests are made until the reset time, and one background retry runs after the reset. The daily check runs without a token. |
+| `mi5g/ui/Mi5gSettingsSections.kt` | The token moved to an optional "Advanced" section with an explanation. The Check button is disabled while rate-limited. |
+
 Unchanged on purpose: Kotlin package/namespace `com.mvrk.vrka`, internal log tags, WorkManager
 names, yt-dlp output markers, the embedded "VRKA Media Detector" WebExtension (internal ID),
 upstream copyright/vendored-code headers, LICENSE and THIRD_PARTY_NOTICES.md.

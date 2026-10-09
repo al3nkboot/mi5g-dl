@@ -140,10 +140,24 @@ class Mi5gScreenshotsTest {
         Page {
             Heading("Mi5G Dl App Updates")
             UpdateSectionContent(
-                state = UpdateUiState(installedVersionName = "1.1.0 (based on VRKA 5.0.2)", installedVersionCode = 2,
-                    message = UpdateRules.explainHttp(404, hasToken = false), isError = true),
-                dailyCheck = false, installMessage = null, onCheck = {}, onDownload = {}, onCancel = {}, onInstall = {},
-                onSaveToken = {}, onClearToken = {}, onDailyCheck = {}, initialShowHelp = true,
+                state = UpdateUiState(installedVersionName = "1.1.1 (based on VRKA 5.0.2)", installedVersionCode = 3,
+                    lastCheckAt = System.currentTimeMillis() - 60_000, message = "You're up to date (1.1.1 is the latest)."),
+                dailyCheck = true, installMessage = null, onCheck = {}, onDownload = {}, onCancel = {}, onInstall = {},
+                onSaveToken = {}, onClearToken = {}, onDailyCheck = {},
+            )
+        }
+    }
+
+    @Test fun updatesRateLimitedAdvanced() = shoot("04b-settings-updates-rate-limited-advanced.png") {
+        Page {
+            Heading("Mi5G Dl App Updates")
+            val now = System.currentTimeMillis()
+            UpdateSectionContent(
+                state = UpdateUiState(installedVersionName = "1.1.1 (based on VRKA 5.0.2)", installedVersionCode = 3,
+                    message = UpdateRules.rateLimitMessage(now + 25 * 60_000, now, hasToken = false), isError = true,
+                    rateLimitedUntil = now + 25 * 60_000),
+                dailyCheck = true, installMessage = null, onCheck = {}, onDownload = {}, onCancel = {}, onInstall = {},
+                onSaveToken = {}, onClearToken = {}, onDailyCheck = {}, initialShowAdvanced = true, initialShowHelp = true,
             )
         }
     }
@@ -152,8 +166,8 @@ class Mi5gScreenshotsTest {
         Page {
             Heading("Mi5G Dl App Updates")
             UpdateSectionContent(
-                state = UpdateUiState(hasToken = true, tokenHint = "github_pat_11…x9Qa", installedVersionName = "1.1.0 (based on VRKA 5.0.2)",
-                    installedVersionCode = 2, lastCheckAt = System.currentTimeMillis() - 60_000, release = release, remoteVersionCode = 3,
+                state = UpdateUiState(hasToken = true, tokenHint = "github_pat_11…x9Qa", installedVersionName = "1.1.1 (based on VRKA 5.0.2)",
+                    installedVersionCode = 3, lastCheckAt = System.currentTimeMillis() - 60_000, release = release, remoteVersionCode = 3,
                     updateAvailable = true, message = "Mi5G Dl 1.2.0 is available.", download = UpdateDownload.Running(12_400_000, 31_500_000)),
                 dailyCheck = true, installMessage = null, onCheck = {}, onDownload = {}, onCancel = {}, onInstall = {},
                 onSaveToken = {}, onClearToken = {}, onDailyCheck = {},

@@ -126,19 +126,21 @@ fun UpdateSectionContent(
     onClearToken: () -> Unit,
     onDailyCheck: (Boolean) -> Unit,
     initialShowHelp: Boolean = false,
+    initialShowAdvanced: Boolean = false,
 ) {
     var showTokenDialog by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(initialShowHelp) }
+    var showAdvanced by remember { mutableStateOf(initialShowAdvanced || state.hasToken) }
     VrkaSectionContainer(shape = RoundedCornerShape(16.dp)) {
         VrkaSettingRow(
             title = "Check for updates",
-            subtitle = "Source: github.com/${UpdateRules.REPO} (private) · installed ${state.installedVersionName.ifBlank { "?" }} (code ${state.installedVersionCode}) · last check ${ago(state.lastCheckAt)}",
+            subtitle = "Source: github.com/${UpdateRules.REPO} · installed ${state.installedVersionName.ifBlank { "?" }} (code ${state.installedVersionCode}) · last check ${ago(state.lastCheckAt)}",
             isSubtitleMono = true,
         ) {
             VrkaOutlinedButton(
                 text = if (state.checking) "Checking…" else "Check",
                 onClick = onCheck,
-                enabled = !state.checking,
+                enabled = !state.checking && state.rateLimitedUntil <= System.currentTimeMillis(),
                 height = 32.dp,
             )
         }
@@ -182,28 +184,37 @@ fun UpdateSectionContent(
         }
         VrkaDivider()
         VrkaSettingRow(
-            title = "GitHub token",
-            subtitle = if (state.hasToken) "Saved, encrypted with Android Keystore (${state.tokenHint ?: "…"}). Sent only to api.github.com."
-            else "Not set. The release repo is private, so GitHub returns 404 without a read-only token.",
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (state.hasToken) VrkaTextButton(text = "Remove", onClick = onClearToken)
-                VrkaOutlinedButton(text = if (state.hasToken) "Replace" else "Add token", onClick = { showTokenDialog = true }, height = 32.dp)
+            title = "Daily background check",
+            subtitle = "Checks once a day (when online) and shows a notification if a new version is out. No token or sign-in needed.",
+        ) { Mi5gSwitch(dailyCheck, onDailyCheck) }
+        VrkaDivider()
+        VrkaTextButton(
+            text = if (showAdvanced) "Advanced: GitHub token (optional) ▲" else "Advanced: GitHub token (optional) ▼",
+            onClick = { showAdvanced = !showAdvanced },
+            color = VrkaTokens.TextSecondary,
+            modifier = Modifier.padding(vertical = 4.dp),
+        )
+        if (showAdvanced) {
+            Small(TOKEN_WHY, modifier = Modifier.padding(start = 6.dp, bottom = 4.dp))
+            VrkaSettingRow(
+                title = "GitHub token",
+                subtitle = if (state.hasToken) "Saved, encrypted with Android Keystore (${state.tokenHint ?: "…"}). Sent only to api.github.com."
+                else "Not set. Not needed while the repository is public.",
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    if (state.hasToken) VrkaTextButton(text = "Remove", onClick = onClearToken)
+                    VrkaOutlinedButton(text = if (state.hasToken) "Replace" else "Add token", onClick = { showTokenDialog = true }, height = 32.dp)
+                }
+            }
+            VrkaTextButton(
+                text = if (showHelp) "Hide: how to create the token ▲" else "How to create the token ▼",
+                onClick = { showHelp = !showHelp },
+                color = VrkaTokens.AccentLight,
+            )
+            if (showHelp) {
+                Small(TOKEN_HELP, modifier = Modifier.padding(start = 6.dp, bottom = 8.dp))
             }
         }
-        VrkaTextButton(
-            text = if (showHelp) "Hide: how to create the token ▲" else "How to create the token ▼",
-            onClick = { showHelp = !showHelp },
-            color = VrkaTokens.AccentLight,
-        )
-        if (showHelp) {
-            Small(TOKEN_HELP, modifier = Modifier.padding(start = 6.dp, bottom = 8.dp))
-        }
-        VrkaDivider()
-        VrkaSettingRow(
-            title = "Daily background check",
-            subtitle = "Checks once a day (when online) and shows a notification if a new version is out.",
-        ) { Mi5gSwitch(dailyCheck, onDailyCheck) }
     }
     if (showTokenDialog) {
         var token by remember { mutableStateOf("") }
@@ -212,7 +223,7 @@ fun UpdateSectionContent(
             title = { Text("GitHub token") },
             text = {
                 Column {
-                    Small("Fine-grained token with read-only Contents access to ${UpdateRules.REPO}. Stored encrypted on this phone only; never synced.")
+                    Small("Optional. Fine-grained token with read-only Contents access to ${UpdateRules.REPO}. Stored encrypted on this phone only; never synced.")
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(
                         value = token,
@@ -234,12 +245,14 @@ fun UpdateSectionContent(
     }
 }
 
+val TOKEN_WHY = """Updates work without a token: ${UpdateRules.REPO} is public. A token is only needed if the repository is made private, or to avoid GitHub's limit of ${UpdateRules.UNAUTHENTICATED_LIMIT_PER_HOUR} unauthenticated requests per hour (shared by your network). One check uses one request."""
+
 const val TOKEN_HELP = """1. On GitHub (signed in as al3nkboot): Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
 2. Name: "Mi5G Dl updater"; Expiration: e.g. 1 year.
 3. Resource owner: al3nkboot. Repository access: "Only select repositories" → al3nkboot/mi5g-dl.
 4. Permissions → Repository permissions → Contents: Read-only (Metadata: Read-only is added automatically). Nothing else.
 5. Generate, copy the token (starts with github_pat_) and paste it here. Repeat on each phone.
-The token can only read this one repository. If it expires, checks show "401" — just create a new one."""
+The token can only read this one repository. If it expires, checks show "401": create a new one or remove it (updates keep working without a token while the repo is public)."""
 
 // ------------------------------------------------------------------------------------------ sync
 

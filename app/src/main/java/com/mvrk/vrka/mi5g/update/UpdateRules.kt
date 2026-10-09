@@ -11,6 +11,11 @@ import java.util.Locale
  *  - APK asset `Mi5G-Dl-X.Y.Z-arm64.apk`
  *  - optional `update.json` asset: {"versionCode":2,"versionName":"1.1.0","apk":"Mi5G-Dl-1.1.0-arm64.apk","sha256":"…"}
  * Only this repository is ever queried; upstream VRKA is never contacted.
+ *
+ * The repository is public, so checks and downloads work WITHOUT a token: one unauthenticated API
+ * call per check (GitHub allows 60/hour per IP) and assets via their public browser_download_url
+ * (github.com → release-assets redirect, not counted against the API limit). An optional token is
+ * only needed if the repo becomes private or to lift the rate limit; it is sent only to api.github.com.
  */
 object UpdateRules {
     const val REPO = "al3nkboot/mi5g-dl"
@@ -18,6 +23,8 @@ object UpdateRules {
     const val API_HOST = "api.github.com"
     const val UPDATE_JSON_ASSET = "update.json"
     private val ASSET_PREFIX = "https://api.github.com/repos/$REPO/releases/assets/"
+    private val BROWSER_PREFIX = "https://github.com/$REPO/releases/download/"
+    const val UNAUTHENTICATED_LIMIT_PER_HOUR = 60
 
     private val TAG = Regex("""^v?(\d+)\.(\d+)\.(\d+)$""")
     private val LEADING_SEMVER = Regex("""^\s*v?(\d+)\.(\d+)(?:\.(\d+))?""")
@@ -25,7 +32,15 @@ object UpdateRules {
 
     fun apkAssetName(version: String) = "Mi5G-Dl-$version-arm64.apk"
 
-    data class Asset(val id: Long, val name: String, val size: Long, val apiUrl: String, val sha256: String?)
+    data class Asset(
+        val id: Long,
+        val name: String,
+        val size: Long,
+        val apiUrl: String,
+        val sha256: String?,
+        /** Public download URL (null when missing or not under this repo's releases). */
+        val browserUrl: String? = null,
+    )
 
     data class Release(
         val tag: String,
@@ -60,6 +75,7 @@ object UpdateRules {
                 size = a.optLong("size"),
                 apiUrl = a.optString("url"),
                 sha256 = normalizeSha256(a.optString("digest")),
+                browserUrl = a.optString("browser_download_url").takeIf { isAllowedBrowserUrl(it, tag, name) },
             )
             if (!isAllowedAssetUrl(asset.apiUrl)) continue
             when {
@@ -124,6 +140,50 @@ object UpdateRules {
     fun isAllowedAssetUrl(url: String): Boolean =
         url.startsWith(ASSET_PREFIX) && url.removePrefix(ASSET_PREFIX).all(Char::isDigit) && url.length > ASSET_PREFIX.length
 
+    /** Public asset URL must be exactly github.com/<this repo>/releases/download/<tag>/<asset name>. */
+    fun isAllowedBrowserUrl(url: String?, tag: String, name: String): Boolean {
+        if (url.isNullOrBlank() || tag.isBlank() || name.isBlank()) return false
+        if (tag.contains('/') || name.contains('/') || tag.contains("..") || name.contains("..")) return false
+        return url == "$BROWSER_PREFIX$tag/$name"
+    }
+
+    /** Is [url] one the download worker may fetch (API asset endpoint or public release download of this repo)? */
+    fun isAllowedDownloadUrl(url: String): Boolean =
+        isAllowedAssetUrl(url) || (url.startsWith(BROWSER_PREFIX) && url.removePrefix(BROWSER_PREFIX).let { rest ->
+            val parts = rest.split('/')
+            parts.size == 2 && parts.all { it.isNotBlank() && it != ".." && it != "." }
+        })
+
+    /**
+     * Where to download an asset from. Without a token: the public browser_download_url (no API quota
+     * used; falls back to the API asset URL, which also works unauthenticated for public repos).
+     * With a token: the API asset URL (works for private repos too).
+     */
+    fun downloadUrl(asset: Asset, hasToken: Boolean): String =
+        if (hasToken) asset.apiUrl else asset.browserUrl ?: asset.apiUrl
+
+    /** GitHub returns 403 (or 429) with x-ratelimit-remaining: 0 / retry-after when rate limited. */
+    fun isRateLimited(code: Int, remaining: String?, retryAfter: String?): Boolean =
+        code == 429 || (code == 403 && (remaining?.trim() == "0" || !retryAfter.isNullOrBlank()))
+
+    /**
+     * When the next attempt may be made (epoch millis): retry-after seconds, else x-ratelimit-reset
+     * (epoch seconds), else one hour from [now]. Clamped to 1 min … 2 h.
+     */
+    fun rateLimitRetryAt(now: Long, resetEpochSeconds: String?, retryAfterSeconds: String?): Long {
+        val candidate = retryAfterSeconds?.trim()?.toLongOrNull()?.let { now + it * 1000 }
+            ?: resetEpochSeconds?.trim()?.toLongOrNull()?.let { it * 1000 }
+            ?: (now + 3_600_000L)
+        return candidate.coerceIn(now + 60_000L, now + 2 * 3_600_000L)
+    }
+
+    fun rateLimitMessage(retryAt: Long, now: Long, hasToken: Boolean): String {
+        val minutes = ((retryAt - now + 59_999) / 60_000).coerceAtLeast(1)
+        val base = "GitHub rate limit reached. Try again in about $minutes min."
+        return if (hasToken) base
+        else "$base Without a token GitHub allows $UNAUTHENTICATED_LIMIT_PER_HOUR requests per hour per network; the daily check stays well within it."
+    }
+
     /** Hosts the updater may talk to (API + GitHub's signed asset storage redirects). */
     fun isAllowedHost(host: String?): Boolean {
         val h = host?.lowercase(Locale.ROOT) ?: return false
@@ -168,10 +228,12 @@ object UpdateRules {
 
     /** Human readable errors for GitHub API failures. */
     fun explainHttp(code: Int, hasToken: Boolean): String = when (code) {
-        401 -> "GitHub rejected the token (401). It may be expired or mistyped — create a new one."
-        403 -> "GitHub refused access (403): token lacks Contents read access to $REPO, or rate limited."
+        401 -> "GitHub rejected the saved token (401). It may be expired or mistyped — replace or remove it under Advanced."
+        403 -> if (hasToken) "GitHub refused access (403): the token lacks Contents read access to $REPO."
+        else "GitHub refused access (403). Try again later."
         404 -> if (hasToken) "Release not found (404). Check that the token has access to $REPO and that a release exists."
-        else "The update repository is private: add a GitHub token below (Settings → Mi5G Dl App Updates)."
+        else "No release found (404). If $REPO has been made private, add a token under Advanced."
+        429 -> "GitHub rate limit reached. Try again later."
         else -> "GitHub returned HTTP $code."
     }
 

@@ -29,7 +29,12 @@ See [MODIFICATIONS.md](MODIFICATIONS.md) for the full list. In short:
 - 1.1.0 (versionCode 2) adds:
   - **Share to download**: a compact bottom sheet for links shared from other apps, with Video/Audio, Trim and a one-tap Download. You can turn on "skip sheet" in Settings.
   - **Trim before download**: start/end times, a range slider and an optional precise cut. Uses yt-dlp `--download-sections`; an FFmpeg fallback handles browser-assisted downloads.
-  - **Self-update from this private repo only**: uses a fine-grained read-only token stored with Android Keystore. Before installing, it checks the APK's package, versionCode and signing certificate.
+  - **Self-update from this repo only** (`al3nkboot/mi5g-dl`): before installing, it checks the APK's size, SHA-256, package, versionCode and signing certificate.
+- 1.1.1 (versionCode 3): the self-updater works **without a token**, because the repository is public.
+  - Each check makes one unauthenticated API call. GitHub allows 60 per hour per IP, and the daily background check uses one.
+  - The APK and `update.json` are downloaded from their public `browser_download_url`, which doesn't count against the API limit.
+  - If GitHub rate-limits a check, the app shows when to try again and retries once after the reset time.
+  - An optional fine-grained token (read-only *Contents*, this repo only) can be added under Settings → Mi5G Dl App Updates → *Advanced*. It's only needed if the repo becomes private, or to raise the rate limit. It's stored with Android Keystore and sent only to `api.github.com`.
   - **Settings & history sync** through one JSON file on Google Drive, picked with the system file picker (no sign-in). It never syncs secrets or the download folder.
 
 ### Releases / self-update convention
