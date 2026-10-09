@@ -30,6 +30,7 @@ internal fun ConfigurationSummary(
     trimStart: String,
     trimEnd: String,
     sponsorBlock: Boolean,
+    trimPrecise: Boolean = false,
 ) {
     val primary = when (mode) {
         MediaMode.VIDEO ->
@@ -48,7 +49,7 @@ internal fun ConfigurationSummary(
             add(if (range.isBlank()) "Playlist" else "Playlist $range")
         }
         if (subtitles) add("Subtitles")
-        if (trimStart.isNotBlank() || trimEnd.isNotBlank()) add("Trim enabled")
+        com.mvrk.vrka.mi5g.trim.TrimSpec.label(trimStart, trimEnd, trimPrecise)?.let(::add)
         if (sponsorBlock) add("SponsorBlock")
     }
     Column(

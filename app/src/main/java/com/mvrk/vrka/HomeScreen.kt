@@ -65,6 +65,7 @@ internal fun HomeScreen(
     onInitialUrlConsumed: () -> Unit = {},
     onEnqueue: (DownloadRequest) -> Unit,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
+    onProbeMedia: (suspend (String) -> VrkaDownloadManager.MediaProbe?)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -97,6 +98,15 @@ internal fun HomeScreen(
     var sponsorCategories by remember { mutableStateOf("sponsor,selfpromo,interaction") }
     var trimStart by remember { mutableStateOf("") }
     var trimEnd by remember { mutableStateOf("") }
+    var trimOpen by remember { mutableStateOf(false) }
+    var trimPrecise by remember(settings.trimPreciseDefault) { mutableStateOf(settings.trimPreciseDefault) }
+    var trimDuration by remember { mutableStateOf<Double?>(null) }
+    var trimProbing by remember { mutableStateOf(false) }
+    var trimProbeMessage by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(url) {
+        trimDuration = null
+        trimProbeMessage = null
+    }
     var referer by remember { mutableStateOf("") }
     var origin by remember { mutableStateOf("") }
     var customHeaders by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
@@ -413,6 +423,72 @@ internal fun HomeScreen(
 
         Spacer(Modifier.height(16.dp))
 
+        // Mi5G Dl: optional trim before download
+        VrkaSectionContainer(
+            shape = RoundedCornerShape(16.dp),
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { trimOpen = !trimOpen }
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "✂  Trim" + (com.mvrk.vrka.mi5g.trim.TrimSpec.label(trimStart, trimEnd, trimPrecise)?.let { "  ·  ${it.removePrefix("✂ ")}" } ?: ""),
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontFamily = VrkaMonoFamily,
+                        fontWeight = FontWeight.SemiBold,
+                    ),
+                    color = VrkaTokens.TextPrimary,
+                )
+                Text(
+                    if (trimOpen) "▲" else "▼",
+                    style = MaterialTheme.typography.labelSmall.copy(fontFamily = VrkaMonoFamily),
+                    color = VrkaTokens.AccentLight,
+                )
+            }
+            if (trimOpen) {
+                com.mvrk.vrka.mi5g.ui.TrimEditor(
+                    start = trimStart,
+                    end = trimEnd,
+                    precise = trimPrecise,
+                    durationSeconds = trimDuration,
+                    probing = trimProbing,
+                    probeMessage = trimProbeMessage,
+                    onStartChange = { trimStart = it },
+                    onEndChange = { trimEnd = it },
+                    onPreciseChange = { trimPrecise = it },
+                    onProbe = onProbeMedia?.let { probe ->
+                        {
+                            val target = com.mvrk.vrka.mi5g.share.ShareUrlExtractor.extractUrl(url) ?: url.trim()
+                            if (target.isBlank()) {
+                                trimProbeMessage = "Enter a URL first."
+                            } else {
+                                trimProbing = true
+                                trimProbeMessage = "Fetching metadata…"
+                                scope.launch {
+                                    val result = probe(target)
+                                    trimProbing = false
+                                    trimDuration = result?.durationSeconds
+                                    trimProbeMessage = when {
+                                        result == null -> "Couldn't read metadata; type the times manually."
+                                        result.durationSeconds == null -> "Length unknown (live/stream); type the times manually."
+                                        else -> null
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
         VrkaSectionContainer(
             shape = RoundedCornerShape(16.dp),
         ) {
@@ -533,32 +609,6 @@ internal fun HomeScreen(
                             },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                        )
-                    }
-                    Text(
-                        "Optional trim (HH:MM:SS or seconds)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = VrkaTokens.TextSecondary,
-                        modifier = Modifier.padding(top = 10.dp),
-                    )
-                    Row(
-                        modifier = Modifier.padding(top = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        OutlinedTextField(
-                            value = trimStart,
-                            onValueChange = { trimStart = it.take(16) },
-                            label = { Text("Start") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
-                        )
-                        OutlinedTextField(
-                            value = trimEnd,
-                            onValueChange = { trimEnd = it.take(16) },
-                            label = { Text("End") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f),
                         )
                     }
                     Text(
@@ -689,6 +739,7 @@ internal fun HomeScreen(
             trimStart = trimStart,
             trimEnd = trimEnd,
             sponsorBlock = sponsorBlock,
+            trimPrecise = trimPrecise,
         )
 
         Spacer(Modifier.height(20.dp))
@@ -756,6 +807,7 @@ internal fun HomeScreen(
                     sponsorCategories = sponsorCategories,
                     trimStart = trimStart,
                     trimEnd = trimEnd,
+                    trimPrecise = trimPrecise,
                     referer = referer.trim(),
                     origin = origin.trim(),
                     customHeaders = customHeadersMap,
@@ -1000,28 +1052,7 @@ private fun validateRequest(
             return "Playlist end must be the same as or higher than start."
         }
     }
-    val parsedStart = parseTimestamp(trimStart)
-    val parsedEnd = parseTimestamp(trimEnd)
-    if (trimStart.isNotBlank() && parsedStart == null) {
-        return "Trim start must be seconds or HH:MM:SS."
-    }
-    if (trimEnd.isNotBlank() && parsedEnd == null) {
-        return "Trim end must be seconds or HH:MM:SS."
-    }
-    if (parsedStart != null && parsedEnd != null && parsedEnd <= parsedStart) {
-        return "Trim end must be after trim start."
-    }
+    val trim = com.mvrk.vrka.mi5g.trim.TrimSpec.validate(trimStart, trimEnd)
+    if (trim is com.mvrk.vrka.mi5g.trim.TrimSpec.Validation.Invalid) return trim.message
     return null
 }
-
-private fun parseTimestamp(value: String): Double? {
-    if (value.isBlank()) return null
-    val parts = value.trim().split(':')
-    if (parts.size !in 1..3) return null
-    val numbers = parts.map { it.toDoubleOrNull() ?: return null }
-    if (numbers.any { it < 0 || !it.isFinite() }) return null
-    if (parts.size > 1 && numbers.last() >= 60) return null
-    if (parts.size == 3 && numbers[1] >= 60) return null
-    return numbers.fold(0.0) { total, part -> total * 60 + part }
-}
-

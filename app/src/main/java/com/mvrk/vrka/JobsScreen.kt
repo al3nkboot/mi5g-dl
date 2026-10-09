@@ -653,6 +653,14 @@ private fun JobCard(
                         modifier = Modifier.padding(top = 4.dp),
                     )
                 }
+                if (job.syncedFrom.isNotBlank()) {
+                    Text(
+                        text = "⇅ Synced from ${job.syncedFrom} (file is on that device)",
+                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily, fontSize = 11.sp),
+                        color = VrkaTokens.TextTertiary,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                }
 
                 if (job.state == JobState.DOWNLOADING || job.state == JobState.POSTPROCESSING) {
                     LinearProgressIndicator(

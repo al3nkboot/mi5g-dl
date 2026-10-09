@@ -939,6 +939,15 @@ internal fun SettingsScreen(
             }
         }
 
+        SettingsHeading("Share to Mi5G Dl")
+        com.mvrk.vrka.mi5g.ui.ShareSettingsSection(settings, repository)
+
+        SettingsHeading("Mi5G Dl App Updates")
+        com.mvrk.vrka.mi5g.ui.UpdateSection(settings, repository)
+
+        SettingsHeading("Sync (Google Drive file)")
+        com.mvrk.vrka.mi5g.ui.SyncSection()
+
         SettingsHeading("About")
         val uriHandler = LocalUriHandler.current
         VrkaSectionContainer(
@@ -1027,11 +1036,11 @@ internal fun SettingsScreen(
             VrkaDivider()
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Mi5G Dl: the upstream VRKA GitHub self-updater is disabled in this fork so that
-            // official VRKA APKs are never downloaded/installed over Mi5G Dl.
+            // Mi5G Dl: the upstream VRKA GitHub self-updater stays disabled. Mi5G Dl updates only
+            // from the user's own repository (see "Mi5G Dl App Updates" above).
             VrkaSettingRow(
-                title = "App Updates",
-                subtitle = "Disabled in Mi5G Dl (personal fork). Upstream VRKA releases are not installed. yt-dlp and uBlock component updates above still work.",
+                title = "Upstream VRKA updates",
+                subtitle = "Never installed over Mi5G Dl. Updates come only from github.com/al3nkboot/mi5g-dl and must be signed with the same key.",
                 isSubtitleMono = true,
             ) {}
         }

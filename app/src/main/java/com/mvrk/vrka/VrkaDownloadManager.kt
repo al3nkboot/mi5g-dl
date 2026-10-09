@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -74,6 +75,9 @@ class VrkaDownloadManager(
     private val activeMediaProcesses = ConcurrentHashMap<String, Process>()
     private val initialized = AtomicBoolean(false)
     private val store = JobStore(context)
+    /** Mi5G Dl: deletion markers for history sync. */
+    val tombstones = com.mvrk.vrka.mi5g.sync.TombstoneStore(java.io.File(context.filesDir, "history_tombstones.json"))
+    @Volatile private var suppressTombstones = false
     private val publisher = OutputPublisher(context, settingsRepository)
     private val stagingRoot by lazy { File(context.getExternalFilesDir(null), "staging") }
     private val speedPattern = Regex("""\bat\s+([^\s]+/s)""", RegexOption.IGNORE_CASE)
@@ -877,6 +881,7 @@ class VrkaDownloadManager(
                 .toList()
         }
         check(outputs.isNotEmpty()) { "yt-dlp completed but produced no output file." }
+        outputs = applyTrimFallback(job, outputs, directory)
 
         if (job.request.mode == MediaMode.VIDEO && job.request.h264CompatibilityMode) {
             outputs = transcodeVideosToH264(job, outputs, directory)
@@ -1020,7 +1025,7 @@ class VrkaDownloadManager(
                         detail = "Publishing to Downloads",
                         persist = true,
                     )
-                    val outputs = listOf(result.outputFile)
+                    val outputs = applyTrimFallback(job, listOf(result.outputFile), directory)
                     if (job.request.mode == MediaMode.VIDEO) {
                         requireVideoStreams(job, outputs)
                     } else {
@@ -1303,8 +1308,112 @@ class VrkaDownloadManager(
 
     private fun mutate(persist: Boolean, transform: (List<DownloadJob>) -> List<DownloadJob>) {
         synchronized(_jobs) {
-            _jobs.value = transform(_jobs.value)
+            val before = _jobs.value
+            val after = transform(before)
+            _jobs.value = after
             if (persist) persistRequests.trySend(Unit)
+            // Mi5G Dl: any terminal (history) entry removed by the user becomes a sync tombstone.
+            if (!suppressTombstones && after.size < before.size) {
+                val remaining = after.mapTo(HashSet()) { it.id }
+                val now = System.currentTimeMillis()
+                val removed = before.filter { it.state.isTerminal && it.id !in remaining }.associate { it.id to now }
+                if (removed.isNotEmpty()) runCatching { tombstones.record(removed) }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------- Mi5G Dl additions
+
+    /** Terminal jobs = download history (what sync shares). */
+    fun historySnapshot(): List<DownloadJob> = _jobs.value.filter { it.state.isTerminal }
+
+    /** Applies merged sync results: inserts/updates remote entries and removes tombstoned ones. */
+    fun applySyncedHistory(upserts: List<DownloadJob>, deletes: Set<String>, tombstoneTimes: Map<String, Long>) {
+        if (upserts.isEmpty() && deletes.isEmpty()) {
+            if (tombstoneTimes.isNotEmpty()) tombstones.record(tombstoneTimes)
+            return
+        }
+        tombstones.record(tombstoneTimes)
+        synchronized(_jobs) {
+            suppressTombstones = true
+            try {
+                mutate(persist = true) { jobs ->
+                    val byId = upserts.associateBy { it.id }
+                    val updated = jobs.mapNotNull { job ->
+                        when {
+                            job.id in deletes && job.state.isTerminal -> null
+                            job.id in byId && job.state.isTerminal -> {
+                                val incoming = byId.getValue(job.id)
+                                // keep device-local file links and folder of an existing entry
+                                incoming.copy(
+                                    outputUris = job.outputUris,
+                                    request = incoming.request.copy(destinationTreeUri = job.request.destinationTreeUri),
+                                    syncedFrom = job.syncedFrom.ifBlank { if (job.outputUris.isEmpty()) incoming.syncedFrom else "" },
+                                )
+                            }
+                            else -> job
+                        }
+                    }
+                    val known = jobs.mapTo(HashSet()) { it.id }
+                    val inserted = upserts.filter { it.id !in known }
+                    (updated + inserted).sortedByDescending { it.createdAt }
+                }
+            } finally {
+                suppressTombstones = false
+            }
+        }
+        tombstones.remove(upserts.map { it.id })
+    }
+
+    data class MediaProbe(val title: String?, val durationSeconds: Double?)
+
+    /** Mi5G Dl: fetches metadata (title + duration) for the trim range slider. */
+    suspend fun probeMedia(url: String): MediaProbe? = withContext(Dispatchers.IO) {
+        if (!isHttpUrl(url)) return@withContext null
+        runCatching {
+            ensureInitialized()
+            val info = YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(DownloadRequest(url = url)))
+            MediaProbe(info.title, info.duration.takeIf { it > 0 }?.toDouble())
+        }.onFailure { Log.w("VRKA", "Metadata probe failed: ${safeError(it)}") }.getOrNull()
+    }
+
+    /**
+     * Mi5G Dl: FFmpeg post-trim fallback. yt-dlp's --download-sections is used first; when the
+     * finished file is still clearly longer than the requested range (browser-assisted/direct
+     * transfers), cut it locally. Returns the (possibly replaced) output list.
+     */
+    private fun applyTrimFallback(job: DownloadJob, outputs: List<File>, directory: File): List<File> {
+        val request = job.request
+        val validation = com.mvrk.vrka.mi5g.trim.TrimSpec.validate(request.trimStart, request.trimEnd)
+        val range = (validation as? com.mvrk.vrka.mi5g.trim.TrimSpec.Validation.Ok)?.range ?: return outputs
+        if (request.commandTemplateId != null) return outputs
+        val audioOnly = request.mode == MediaMode.AUDIO
+        return outputs.map { input ->
+            val ext = input.extension.lowercase()
+            if (ext !in VIDEO_EXTENSIONS && ext !in AUDIO_EXTENSIONS) return@map input
+            val actual = MediaAssembly.durationMilliseconds(input, context)?.div(1000.0)
+            if (!com.mvrk.vrka.mi5g.trim.TrimSpec.needsPostTrim(range, actual)) return@map input
+            if (isCancelled(job.id)) throw CancellationException("Trim cancelled")
+            update(job.id, state = JobState.POSTPROCESSING, detail = "Trimming with FFmpeg", progress = 0f, persist = true)
+            val output = File(directory, ".mi5g_trim_${UUID.randomUUID()}.${input.extension}")
+            val command = listOf(File(context.applicationInfo.nativeLibraryDir, "libffmpeg.so").absolutePath) +
+                com.mvrk.vrka.mi5g.trim.TrimSpec.ffmpegArgs(input.absolutePath, output.absolutePath, range, request.trimPrecise, audioOnly || ext in AUDIO_EXTENSIONS)
+            val ok = MediaAssembly.executeFfmpeg(
+                command,
+                context,
+                onProcessStarted = { process -> activeMediaProcesses[job.id] = process },
+                onOutputLine = { },
+            )
+            activeMediaProcesses.remove(job.id)
+            if (ok && output.isFile && output.length() > 0L) {
+                val target = File(directory, input.name)
+                input.delete()
+                if (output.renameTo(target)) target else output
+            } else {
+                output.delete()
+                Log.w("VRKA", "FFmpeg trim fallback failed; keeping the untrimmed file")
+                input
+            }
         }
     }
 

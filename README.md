@@ -25,8 +25,22 @@ See [MODIFICATIONS.md](MODIFICATIONS.md) for the full list. In short:
 - App name `Mi5G Dl`, applicationId `com.midroid.mi5gdl` (installs alongside VRKA; Kotlin package `com.mvrk.vrka` left unchanged).
 - New launcher/notification icon ("5G" + download arrow, dark purple). Purple accent + AMOLED black theme kept.
 - Default download folder `Download/Mi5G Dl`.
-- In-app *App Updates* (VRKA GitHub self-updater) **disabled** so upstream VRKA APKs are never installed over this app. yt-dlp and uBlock Origin component updates work as upstream.
-- versionName `1.0.0 (based on VRKA 5.0.2)`, versionCode `1`.
+- Upstream VRKA self-updater **disabled**: upstream VRKA APKs are never installed over this app. yt-dlp and uBlock Origin component updates work as upstream.
+- 1.1.0 (versionCode 2) adds:
+  - **Share to download**: a compact bottom sheet for links shared from other apps, with Video/Audio, Trim and a one-tap Download. You can turn on "skip sheet" in Settings.
+  - **Trim before download**: start/end times, a range slider and an optional precise cut. Uses yt-dlp `--download-sections`; an FFmpeg fallback handles browser-assisted downloads.
+  - **Self-update from this private repo only**: uses a fine-grained read-only token stored with Android Keystore. Before installing, it checks the APK's package, versionCode and signing certificate.
+  - **Settings & history sync** through one JSON file on Google Drive, picked with the system file picker (no sign-in). It never syncs secrets or the download folder.
+
+### Releases / self-update convention
+
+- Tag: `vX.Y.Z`
+- APK asset: `Mi5G-Dl-X.Y.Z-arm64.apk`
+- `update.json` asset:
+  ```json
+  {"versionCode":N,"versionName":"X.Y.Z","apk":"Mi5G-Dl-X.Y.Z-arm64.apk","sha256":"…"}
+  ```
+- The APK must be signed with the same key as the installed app, or the app refuses the update.
 
 ## What it does
 

@@ -52,6 +52,7 @@ class DownloadRequestFactoryTest {
                 subtitleLanguages = "en.*,hi",
                 trimStart = "00:00:03",
                 trimEnd = "00:00:08",
+                trimPrecise = true,
             ),
         )
 
@@ -62,8 +63,17 @@ class DownloadRequestFactoryTest {
         assertTrue(request.hasOption("--write-auto-subs"))
         assertTrue(request.hasOption("--embed-subs"))
         assertEquals("en.*,hi", request.getOption("--sub-langs"))
-        assertEquals("*00:00:03-00:00:08", request.getOption("--download-sections"))
+        assertEquals("*3-8", request.getOption("--download-sections"))
         assertTrue(request.hasOption("--force-keyframes-at-cuts"))
+    }
+
+    @Test
+    fun fastTrimDoesNotForceKeyframesAndOpenEndUsesInf() {
+        val request = built(DownloadRequest(url = URL, trimStart = "1:30", trimEnd = "", trimPrecise = false))
+        assertEquals("*90-inf", request.getOption("--download-sections"))
+        assertFalse(request.hasOption("--force-keyframes-at-cuts"))
+        val untrimmed = built(DownloadRequest(url = URL))
+        assertFalse(untrimmed.hasOption("--download-sections"))
     }
 
     @Test

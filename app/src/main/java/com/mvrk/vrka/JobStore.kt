@@ -8,6 +8,27 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 internal class JobStore(private val target: File) {
+    companion object {
+        /**
+         * Record schema. Migrations are additive only:
+         *  1 = upstream VRKA 5.0.2 records (no "schema" field)
+         *  2 = Mi5G Dl 1.1.0: request.trimPrecise, syncedFrom
+         */
+        const val SCHEMA_VERSION = 2
+
+        /** Upgrades a stored record in place to [SCHEMA_VERSION] by filling new fields with defaults. */
+        fun migrate(record: JSONObject): JSONObject {
+            var schema = record.optInt("schema", 1)
+            if (schema < 2) {
+                record.optJSONObject("request")?.let { if (!it.has("trimPrecise")) it.put("trimPrecise", false) }
+                if (!record.has("syncedFrom")) record.put("syncedFrom", "")
+                schema = 2
+            }
+            record.put("schema", schema)
+            return record
+        }
+    }
+
     constructor(context: Context) : this(File(context.filesDir, "download_jobs.json"))
 
     fun load(): List<DownloadJob> {
@@ -62,7 +83,9 @@ internal class JobStore(private val target: File) {
     private fun encode(job: DownloadJob): JSONObject {
         val request = job.request
         return JSONObject()
+            .put("schema", SCHEMA_VERSION)
             .put("id", job.id)
+            .put("syncedFrom", job.syncedFrom)
             .put("state", job.state.name)
             .put("title", job.title)
             .put("detail", job.detail)
@@ -98,6 +121,7 @@ internal class JobStore(private val target: File) {
                     .put("sponsorCategories", request.sponsorCategories)
                     .put("trimStart", request.trimStart)
                     .put("trimEnd", request.trimEnd)
+                    .put("trimPrecise", request.trimPrecise)
                     .put("customArguments", JSONArray(request.customArguments))
                     .put("commandTemplateId", request.commandTemplateId)
                     .put("commandTemplateName", request.commandTemplateName)
@@ -114,7 +138,8 @@ internal class JobStore(private val target: File) {
             )
     }
 
-    private fun decode(value: JSONObject): DownloadJob? = runCatching {
+    private fun decode(stored: JSONObject): DownloadJob? = runCatching {
+        val value = migrate(stored)
         val encodedRequest = value.getJSONObject("request")
         val savedState = enumValue(value.optString("state"), JobState.FAILED)
         val restoredState = if (savedState.isTerminal) savedState else JobState.FAILED
@@ -172,6 +197,7 @@ internal class JobStore(private val target: File) {
                 ),
                 trimStart = encodedRequest.optString("trimStart"),
                 trimEnd = encodedRequest.optString("trimEnd"),
+                trimPrecise = encodedRequest.optBoolean("trimPrecise", false),
                 customArguments = encodedRequest.optJSONArray("customArguments")
                     ?.strings()
                     .orEmpty(),
@@ -205,6 +231,7 @@ internal class JobStore(private val target: File) {
             attempt = value.optInt("attempt", 1),
             actualResolution = value.optString("actualResolution").takeIf { it.isNotBlank() && it != "null" },
             subtitleStatus = enumValue(value.optString("subtitleStatus"), com.mvrk.vrka.subtitle.SubtitleStatus.NONE),
+            syncedFrom = value.optString("syncedFrom"),
         )
     }.getOrNull()
 

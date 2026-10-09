@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Mi5G Dl 1.1.0: self-update from the user's own GitHub releases (signature-verified). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".VrkaApplication"
@@ -36,10 +38,43 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+        </activity>
+
+        <!-- Mi5G Dl: share-to-download bottom sheet -->
+        <activity
+            android:name=".mi5g.share.ShareActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="standard"
+            android:label="@string/share_label"
+            android:theme="@style/Theme.Mi5G.Share"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+            <!-- Optional "open with" for common media hosts. Not auto-verified: enable it under
+                 App info → Open by default → Add links if you want these links to open here. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" />
+                <data android:host="youtube.com" />
+                <data android:host="www.youtube.com" />
+                <data android:host="m.youtube.com" />
+                <data android:host="music.youtube.com" />
+                <data android:host="youtu.be" />
+                <data android:host="x.com" />
+                <data android:host="twitter.com" />
+                <data android:host="mobile.twitter.com" />
+                <data android:host="www.tiktok.com" />
+                <data android:host="vm.tiktok.com" />
+                <data android:host="vt.tiktok.com" />
+                <data android:host="www.instagram.com" />
+                <data android:host="instagram.com" />
             </intent-filter>
         </activity>
 

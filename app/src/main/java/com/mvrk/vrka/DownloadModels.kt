@@ -95,6 +95,8 @@ data class DownloadRequest(
     val sponsorCategories: String = "sponsor,selfpromo,interaction",
     val trimStart: String = "",
     val trimEnd: String = "",
+    /** Mi5G Dl: re-encode at cut points (yt-dlp --force-keyframes-at-cuts) for frame-accurate trims. */
+    val trimPrecise: Boolean = false,
     val customArguments: List<String> = emptyList(),
     val commandTemplateId: String? = null,
     val commandTemplateName: String = "",
@@ -126,6 +128,8 @@ data class DownloadJob(
     val attempt: Int = 1,
     val actualResolution: String? = null,
     val subtitleStatus: com.mvrk.vrka.subtitle.SubtitleStatus = com.mvrk.vrka.subtitle.SubtitleStatus.NONE,
+    /** Mi5G Dl: device name when this history entry was imported by Settings & history sync. */
+    val syncedFrom: String = "",
 )
 
 enum class StreamSelectionState {

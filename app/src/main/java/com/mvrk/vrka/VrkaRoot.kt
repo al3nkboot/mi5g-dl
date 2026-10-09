@@ -72,7 +72,9 @@ fun VrkaRoot(
     manager: VrkaDownloadManager,
     openQueueRequests: StateFlow<Long>,
     sharedUrl: StateFlow<String?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
+    openSettingsRequests: StateFlow<Long> = remember { kotlinx.coroutines.flow.MutableStateFlow(0L) },
 ) {
+    val openSettingsToken by openSettingsRequests.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val jobs by manager.jobs.collectAsStateWithLifecycle()
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
@@ -251,6 +253,7 @@ fun VrkaRoot(
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
+                                    onProbeMedia = manager::probeMedia,
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)
@@ -403,6 +406,11 @@ fun VrkaRoot(
     LaunchedEffect(openQueueToken) {
         if (openQueueToken > 0L) {
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
+        }
+    }
+    LaunchedEffect(openSettingsToken) {
+        if (openSettingsToken > 0L) {
+            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.SETTINGS))
         }
     }
 }

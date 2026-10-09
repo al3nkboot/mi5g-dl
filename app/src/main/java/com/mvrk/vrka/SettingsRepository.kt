@@ -40,6 +40,10 @@ data class AppSettings(
     val customCommandMode: Boolean = false,
     val customCommandTemplates: List<YtDlpCommandTemplate> = listOf(CustomCommandPolicy.starterTemplate()),
     val selectedCustomCommandTemplateId: String = "vrka-safe-starter",
+    // Mi5G Dl 1.1.0
+    val shareSkipSheet: Boolean = false,
+    val trimPreciseDefault: Boolean = false,
+    val updateDailyCheck: Boolean = false,
 )
 
 class SettingsRepository(
@@ -68,6 +72,9 @@ class SettingsRepository(
         val customCommandMode = booleanPreferencesKey("custom_command_mode")
         val customCommandTemplates = stringPreferencesKey("custom_command_templates")
         val selectedCustomCommandTemplateId = stringPreferencesKey("selected_custom_command_template_id")
+        val shareSkipSheet = booleanPreferencesKey("share_skip_sheet")
+        val trimPreciseDefault = booleanPreferencesKey("trim_precise_default")
+        val updateDailyCheck = booleanPreferencesKey("update_daily_check")
     }
 
     val settings: StateFlow<AppSettings> = context.vrkaDataStore.data
@@ -195,6 +202,64 @@ class SettingsRepository(
         }
     }
 
+    /** Reads settings from disk (unlike [settings].value this is never the pre-load default). */
+    suspend fun current(): AppSettings = mapSettings(
+        context.vrkaDataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }.first(),
+    )
+
+    suspend fun setShareSkipSheet(value: Boolean) = update(Keys.shareSkipSheet, value)
+
+    suspend fun setTrimPreciseDefault(value: Boolean) = update(Keys.trimPreciseDefault, value)
+
+    suspend fun setUpdateDailyCheck(value: Boolean) = update(Keys.updateDailyCheck, value)
+
+    // ---- Mi5G Dl settings sync: raw access to the whitelisted keys only (see SyncPolicy) ----
+
+    /** Current values of the synced keys that are explicitly set (defaults are not exported). */
+    val syncableValues: kotlinx.coroutines.flow.Flow<Map<String, Any>> = context.vrkaDataStore.data
+        .catch { error -> if (error is IOException) emit(emptyPreferences()) else throw error }
+        .map(::extractSyncable)
+
+    suspend fun exportSyncable(): Map<String, Any> = extractSyncable(context.vrkaDataStore.data.first())
+
+    private fun extractSyncable(preferences: Preferences): Map<String, Any> = buildMap {
+        com.mvrk.vrka.mi5g.sync.SyncPolicy.SYNCED_SETTINGS.forEach { (name, type) ->
+            if (!com.mvrk.vrka.mi5g.sync.SyncPolicy.isSyncable(name)) return@forEach
+            val value: Any? = when (type) {
+                com.mvrk.vrka.mi5g.sync.SyncPolicy.Type.STRING -> preferences[stringPreferencesKey(name)]
+                com.mvrk.vrka.mi5g.sync.SyncPolicy.Type.BOOL -> preferences[booleanPreferencesKey(name)]
+                com.mvrk.vrka.mi5g.sync.SyncPolicy.Type.INT -> preferences[intPreferencesKey(name)]
+            }
+            if (value != null) put(name, value)
+        }
+    }
+
+    /** Writes synced values (type-checked; unknown/secret/device keys are ignored). */
+    suspend fun applySyncable(values: Map<String, Any>) {
+        if (values.isEmpty()) return
+        context.vrkaDataStore.edit { preferences ->
+            values.forEach { (name, raw) ->
+                if (!com.mvrk.vrka.mi5g.sync.SyncPolicy.isSyncable(name)) return@forEach
+                val value = com.mvrk.vrka.mi5g.sync.SyncCodec.coerce(name, raw) ?: return@forEach
+                when (com.mvrk.vrka.mi5g.sync.SyncPolicy.SYNCED_SETTINGS[name]) {
+                    com.mvrk.vrka.mi5g.sync.SyncPolicy.Type.STRING -> {
+                        val text = if (name == "custom_command_templates") encodeTemplates(decodeTemplates(value as String)) else value as String
+                        preferences[stringPreferencesKey(name)] = text
+                    }
+                    com.mvrk.vrka.mi5g.sync.SyncPolicy.Type.BOOL -> preferences[booleanPreferencesKey(name)] = value as Boolean
+                    com.mvrk.vrka.mi5g.sync.SyncPolicy.Type.INT -> preferences[intPreferencesKey(name)] = value as Int
+                    null -> Unit
+                }
+            }
+            // keep the derived concurrency value consistent with the synced toggle/max
+            val enabled = preferences[Keys.concurrentDownloadsEnabled]
+            if (enabled != null) {
+                val maxConcurrent = (preferences[Keys.maxConcurrentDownloads] ?: 2).coerceIn(2, 4)
+                preferences[Keys.concurrency] = if (enabled) maxConcurrent else 1
+            }
+        }
+    }
+
     suspend fun getLastAppUpdateCheckTimestamp(): Long =
         context.vrkaDataStore.data.first()[Keys.lastAppUpdateCheckTimestamp] ?: 0L
 
@@ -261,6 +326,9 @@ class SettingsRepository(
             customCommandMode = preferences[Keys.customCommandMode] ?: false,
             customCommandTemplates = templates,
             selectedCustomCommandTemplateId = selectedTemplate,
+            shareSkipSheet = preferences[Keys.shareSkipSheet] ?: false,
+            trimPreciseDefault = preferences[Keys.trimPreciseDefault] ?: false,
+            updateDailyCheck = preferences[Keys.updateDailyCheck] ?: false,
         )
     }
 

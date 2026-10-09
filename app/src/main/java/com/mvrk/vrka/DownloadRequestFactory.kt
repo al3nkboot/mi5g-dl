@@ -159,9 +159,13 @@ internal object DownloadRequestFactory {
                 )
             }
 
-            trimSection(options)?.let {
-                addOption("--download-sections", it)
-                addOption("--force-keyframes-at-cuts")
+            // Mi5G Dl: trim before download (section download; precise cut re-encodes at keyframes).
+            com.mvrk.vrka.mi5g.trim.TrimSpec.ytDlpArgs(options.trimStart, options.trimEnd, options.trimPrecise).let { args ->
+                var i = 0
+                while (i < args.size) {
+                    if (args[i] == "--download-sections" && i + 1 < args.size) { addOption(args[i], args[i + 1]); i += 2 }
+                    else { addOption(args[i]); i += 1 }
+                }
             }
 
             addJsRuntime(this)
@@ -264,13 +268,6 @@ internal object DownloadRequestFactory {
             }
         }
         return result
-    }
-
-    private fun trimSection(request: DownloadRequest): String? {
-        val start = request.trimStart.trim()
-        val end = request.trimEnd.trim()
-        if (start.isEmpty() && end.isEmpty()) return null
-        return "*${start.ifEmpty { "0" }}-${end.ifEmpty { "inf" }}"
     }
 
     fun buildVideoFormat(height: Int?, prefer60Fps: Boolean): String {

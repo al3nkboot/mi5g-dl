@@ -1,6 +1,19 @@
 package com.mvrk.vrka
 
-internal fun requestSummary(request: DownloadRequest): String = when (request.mode) {
+internal fun requestSummary(request: DownloadRequest): String =
+    withTrim(baseRequestSummary(request), request)
+
+internal fun jobMediaSummary(job: DownloadJob): String =
+    withTrim(baseJobMediaSummary(job), job.request)
+
+/** Mi5G Dl: trim range shown in the readout, queue and history. */
+internal fun trimLabel(request: DownloadRequest): String? =
+    com.mvrk.vrka.mi5g.trim.TrimSpec.label(request.trimStart, request.trimEnd, request.trimPrecise)
+
+private fun withTrim(base: String, request: DownloadRequest): String =
+    trimLabel(request)?.let { "$base • $it" } ?: base
+
+private fun baseRequestSummary(request: DownloadRequest): String = when (request.mode) {
     MediaMode.VIDEO -> "Video • ${request.quality.label}"
     MediaMode.AUDIO -> when (request.audioFormat) {
         AudioFormat.MP3 -> "MP3 • ${request.mp3Bitrate} kbps"
@@ -9,7 +22,7 @@ internal fun requestSummary(request: DownloadRequest): String = when (request.mo
     }
 }
 
-internal fun jobMediaSummary(job: DownloadJob): String = when (job.request.mode) {
+private fun baseJobMediaSummary(job: DownloadJob): String = when (job.request.mode) {
     MediaMode.VIDEO -> {
         val actual = job.actualResolution
         if (!actual.isNullOrBlank()) {
@@ -31,7 +44,7 @@ internal fun jobStatusLabel(job: DownloadJob): String = when {
     job.state == JobState.PREPARING && job.detail.contains("runtime", true) -> "Analysing"
     job.state == JobState.POSTPROCESSING && job.detail.contains("Publishing", true) -> "Publishing"
     job.state == JobState.POSTPROCESSING &&
-        (job.request.trimStart.isNotBlank() || job.request.trimEnd.isNotBlank()) -> "Trimming"
+        (job.detail.contains("Trimming", true)) -> "Trimming"
     job.state == JobState.POSTPROCESSING && job.request.mode == MediaMode.AUDIO -> "Converting"
     job.state == JobState.POSTPROCESSING -> "Merging"
     else -> job.state.label
