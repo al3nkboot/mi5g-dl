@@ -334,3 +334,44 @@ fun SyncSectionContent(
         }
     }
 }
+
+// ------------------------------------------------------------------------------------------ YouTube account
+
+@Composable
+fun YouTubeAccountSection() {
+    val context = LocalContext.current
+    val manager = remember { com.mvrk.vrka.mi5g.youtube.YouTubeAccountManager.get(context) }
+    val state by manager.state.collectAsState()
+    val scope = rememberCoroutineScope()
+    val signIn = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { manager.refresh() }
+    YouTubeAccountSectionContent(
+        state = state,
+        onSignIn = { signIn.launch(android.content.Intent(context, com.mvrk.vrka.mi5g.youtube.YouTubeSignInActivity::class.java)) },
+        onSignOut = { scope.launch { manager.signOut() } },
+    )
+}
+
+@Composable
+fun YouTubeAccountSectionContent(
+    state: com.mvrk.vrka.mi5g.youtube.YouTubeAccountState,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+) {
+    VrkaSectionContainer(shape = RoundedCornerShape(16.dp)) {
+        VrkaSettingRow(
+            title = if (state.signedIn) "Signed in to YouTube" else "Not signed in",
+            subtitle = if (state.signedIn) "${state.cookieCount} cookies saved ${ago(state.savedAt)} · used only for YouTube links"
+            else "Optional. Helps when YouTube asks to \"confirm you're not a bot\" or for age-restricted / members videos.",
+        ) {
+            if (state.signedIn) VrkaTextButton(text = "Sign out", onClick = onSignOut, color = VrkaTokens.Error)
+            else VrkaOutlinedButton(text = "Sign in…", onClick = onSignIn, height = 32.dp, borderColor = VrkaTokens.Accent)
+        }
+        state.message?.let { Small(it, color = if (state.isError) VrkaTokens.Error else VrkaTokens.AccentLight, modifier = Modifier.padding(bottom = 6.dp)) }
+        if (state.signedIn) {
+            VrkaTextButton(text = "Sign in again (refresh cookies)", onClick = onSignIn, color = VrkaTokens.AccentLight)
+        }
+        Small(YOUTUBE_ACCOUNT_HELP, color = VrkaTokens.TextTertiary, modifier = Modifier.padding(top = 2.dp, bottom = 8.dp))
+    }
+}
+
+const val YOUTUBE_ACCOUNT_HELP = "Sign-in opens Google in Mi5G Dl's private built-in browser. Afterwards only youtube.com/google.com cookies are saved, in app-private storage on this phone: never synced, never logged, never sent anywhere except YouTube by yt-dlp. Google may block sign-in in embedded browsers (\"This browser or app may not be secure\"); downloads still work without it. Signing in does not always beat the bot check, which mostly depends on your network. Sign out deletes the cookies."

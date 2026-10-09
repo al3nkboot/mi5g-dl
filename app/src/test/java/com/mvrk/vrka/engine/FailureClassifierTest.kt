@@ -137,7 +137,7 @@ class FailureClassifierTest {
     }
 
     @Test
-    fun `YouTube URLs are browser-recoverable for bot or auth challenges but stay direct on other failures per Phase 7`() {
+    fun `YouTube URLs never start the browser fallback (Mi5G Dl 1_1_2)`() {
         val ytUrls = listOf(
             "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
             "https://youtu.be/aqz-KE-bpKQ",
@@ -146,9 +146,10 @@ class FailureClassifierTest {
         )
         for (url in ytUrls) {
             assertTrue("Should be recognized as yt-dlp native target: $url", isYtdlpNativeTarget(url))
-            // Bot/auth challenges (cookies, cloudflare) are browser-recoverable
-            assertTrue(isFailureBrowserRecoverable(FailureCategory.COOKIES, targetUrl = url))
-            assertTrue(isFailureBrowserRecoverable(FailureCategory.CLOUDFLARE, targetUrl = url))
+            // Mi5G Dl: YouTube's web player streams via SABR/UMP, which the browser fallback cannot
+            // capture, so even cookie/bot challenges stay on the direct path (client retries, sign-in).
+            assertFalse(isFailureBrowserRecoverable(FailureCategory.COOKIES, targetUrl = url))
+            assertFalse(isFailureBrowserRecoverable(FailureCategory.CLOUDFLARE, targetUrl = url))
             // HTTP errors and generic player parse errors on native yt-dlp targets must NOT trigger browser fallback
             assertFalse(isFailureBrowserRecoverable(FailureCategory.HTTP, targetUrl = url))
             assertFalse(isFailureBrowserRecoverable(FailureCategory.BROWSER_RECOVERABLE, targetUrl = url))
@@ -159,6 +160,16 @@ class FailureClassifierTest {
             assertFalse(isFailureBrowserRecoverable(FailureCategory.DRM, targetUrl = url))
             assertFalse(isFailureBrowserRecoverable(FailureCategory.IMPERSONATION, targetUrl = url))
         }
+    }
+
+    @Test
+    fun `YouTube bot check is classified as auth, not cookies, and is not browser-recoverable`() {
+        val err = "ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser or --cookies for the authentication. See  https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp"
+        assertEquals(FailureCategory.AUTH_REQUIRED, classifyDownloadError(err))
+        assertFalse(isFailureBrowserRecoverable(classifyDownloadError(err), targetUrl = "https://youtu.be/dQw4w9WgXcQ", errorMessage = err))
+        assertTrue(formatDownloadError(err).second.contains("not a bot"))
+        // Genuine cookie-database errors elsewhere keep their category
+        assertEquals(FailureCategory.COOKIES, classifyDownloadError("ERROR: could not copy chrome cookie database"))
     }
 
     @Test

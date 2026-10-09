@@ -77,6 +77,10 @@ class FallbackEngine(
     private val _candidateCount = MutableStateFlow(0)
     val candidateCount: StateFlow<Int> = _candidateCount.asStateFlow()
 
+    /** Mi5G Dl: page-load status for the fallback UI (so a page that never renders isn't just a blank view). */
+    private val _pageStatus = MutableStateFlow<String?>("Opening page…")
+    val pageStatus: StateFlow<String?> = _pageStatus.asStateFlow()
+
     private val _activeSession = MutableStateFlow<GeckoSession?>(null)
     val activeSession: StateFlow<GeckoSession?> = _activeSession.asStateFlow()
 
@@ -480,14 +484,30 @@ class FallbackEngine(
                 error: WebRequestError
             ): GeckoResult<String>? {
                 Log.w(TAG, "Fallback page load error: ${error.code}, host=${uri?.let { safeHost(it) }.orEmpty()}")
+                _pageStatus.value = "The page failed to load (error ${error.code}). Check the connection, or Cancel and retry."
                 return GeckoResult.fromValue(null)
             }
         }
 
         geckoSession.progressDelegate = object : GeckoSession.ProgressDelegate {
+            override fun onPageStart(session: GeckoSession, url: String) {
+                _pageStatus.value = "Loading ${safeHost(url)}…"
+            }
+
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                if (progress in 1..99 && _pageStatus.value?.startsWith("Loading") == true) {
+                    _pageStatus.value = _pageStatus.value!!.substringBefore(" (") + " ($progress%)"
+                }
+            }
+
             override fun onPageStop(session: GeckoSession, success: Boolean) {
                 if (!success) {
                     Log.w(TAG, "Fallback page load failed for task $taskId")
+                    if (_pageStatus.value?.startsWith("The page failed") != true) {
+                        _pageStatus.value = "The page did not finish loading. Cancel and retry, or check the connection."
+                    }
+                } else {
+                    _pageStatus.value = null
                 }
             }
         }

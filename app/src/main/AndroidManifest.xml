@@ -40,6 +40,15 @@
             </intent-filter>
         </activity>
 
+        <!-- Mi5G Dl: optional YouTube sign-in (private GeckoView session; exports youtube/google cookies to app-private storage) -->
+        <activity
+            android:name=".mi5g.youtube.YouTubeSignInActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="YouTube sign-in"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:windowSoftInputMode="adjustResize" />
+
         <!-- Mi5G Dl: share-to-download bottom sheet -->
         <activity
             android:name=".mi5g.share.ShareActivity"

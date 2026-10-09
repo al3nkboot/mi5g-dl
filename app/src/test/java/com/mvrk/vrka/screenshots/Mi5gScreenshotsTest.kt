@@ -188,4 +188,17 @@ class Mi5gScreenshotsTest {
             )
         }
     }
+
+    @Test fun youtubeAccount() = shoot("07-settings-youtube-account.png") {
+        Page {
+            Heading("YouTube account (optional) — signed out")
+            com.mvrk.vrka.mi5g.ui.YouTubeAccountSectionContent(com.mvrk.vrka.mi5g.youtube.YouTubeAccountState(), {}, {})
+            Heading("YouTube account (optional) — signed in")
+            com.mvrk.vrka.mi5g.ui.YouTubeAccountSectionContent(
+                com.mvrk.vrka.mi5g.youtube.YouTubeAccountState(signedIn = true, cookieCount = 23,
+                    savedAt = System.currentTimeMillis() - 2 * 60_000, message = "Signed in — 23 YouTube/Google cookies saved on this phone."),
+                {}, {},
+            )
+        }
+    }
 }

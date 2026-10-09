@@ -60,13 +60,32 @@ internal object DownloadRequestFactory {
         request.addOption("--remote-components", "ejs:github")
     }
 
-    fun info(request: DownloadRequest): YoutubeDLRequest =
+    /**
+     * Mi5G Dl: per-attempt YouTube context: the optional signed-in cookies.txt and an alternative
+     * InnerTube `player_client` plan used when YouTube's bot check rejects the default clients.
+     */
+    data class YouTubeContext(
+        val cookieFile: String? = null,
+        val plan: com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.ClientPlan? = null,
+    )
+
+    private fun YoutubeDLRequest.addYouTubeContext(request: DownloadRequest, yt: YouTubeContext?) {
+        if (yt == null || request.resolvedMediaUrl != null) return
+        if (!com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.isYouTubeUrl(request.url)) return
+        com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.cookiesArgs(request.url, request.resolvedMediaUrl, yt.cookieFile)
+            .takeIf { it.size == 2 }?.let { addOption(it[0], it[1]) }
+        com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.extractorArgs(yt.plan)
+            .takeIf { it.size == 2 }?.let { addOption(it[0], it[1]) }
+    }
+
+    fun info(request: DownloadRequest, youtube: YouTubeContext? = null): YoutubeDLRequest =
         YoutubeDLRequest(request.resolvedMediaUrl ?: request.url).apply {
             addOption("--no-warnings")
             addOption("--legacy-server-connect")
             if (!request.isPlaylist) addOption("--no-playlist")
             addJsRuntime(this)
             addSessionContext(request)
+            addYouTubeContext(request, youtube)
         }
 
     fun download(
@@ -74,6 +93,7 @@ internal object DownloadRequestFactory {
         stagingDirectory: File,
         recoveryAttempt: Boolean = false,
         includeSubtitles: Boolean = true,
+        youtube: YouTubeContext? = null,
     ): YoutubeDLRequest {
         val options = job.request
         val source = options.resolvedMediaUrl ?: options.url
@@ -182,6 +202,7 @@ internal object DownloadRequestFactory {
                 addOption("--extractor-args", "generic:impersonate")
             }
             addSessionContext(options)
+            addYouTubeContext(options, youtube)
             if (options.customArguments.isNotEmpty()) {
                 addCommands(safeCustomArguments(options).take(40))
             }

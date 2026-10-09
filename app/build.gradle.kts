@@ -43,8 +43,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 3
-        versionName = "1.1.1 (based on VRKA $upstreamVrkaVersion)"
+        versionCode = 4
+        versionName = "1.1.2 (based on VRKA $upstreamVrkaVersion)"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
         buildConfigField("String", "UPSTREAM_VRKA_VERSION", "\"$upstreamVrkaVersion\"")
         // Mi5G Dl: upstream VRKA GitHub self-update is disabled so VRKA APKs are never installed over this fork.

@@ -407,6 +407,33 @@ class DownloadRequestFactoryTest {
         assertTrue(opusRequest.hasOption("--embed-thumbnail"))
     }
 
+    @Test
+    fun youTubeContextAddsCookiesAndPlayerClientOnlyForYouTubePages() {
+        val plan = com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.plans(true).first()
+        val ctx = DownloadRequestFactory.YouTubeContext(cookieFile = "/data/mi5g/youtube_cookies.txt", plan = plan)
+        val yt = DownloadRequestFactory.download(
+            DownloadJob(id = "yt", request = DownloadRequest(url = "https://youtu.be/dQw4w9WgXcQ")), staging, youtube = ctx,
+        )
+        assertEquals("/data/mi5g/youtube_cookies.txt", yt.getOption("--cookies"))
+        assertEquals("youtube:player_client=web_embedded,web_safari", yt.getOption("--extractor-args"))
+        val info = DownloadRequestFactory.info(DownloadRequest(url = "https://www.youtube.com/watch?v=x"), ctx)
+        assertEquals("/data/mi5g/youtube_cookies.txt", info.getOption("--cookies"))
+
+        val other = DownloadRequestFactory.download(DownloadJob(id = "o", request = DownloadRequest(url = URL)), staging, youtube = ctx)
+        assertFalse(other.hasOption("--cookies"))
+        assertFalse(other.hasOption("--extractor-args"))
+
+        val resolved = DownloadRequestFactory.download(
+            DownloadJob(id = "r", request = DownloadRequest(url = "https://youtu.be/x", resolvedMediaUrl = "https://rr1.googlevideo.com/videoplayback?x=1")),
+            staging, youtube = ctx,
+        )
+        assertFalse(resolved.hasOption("--cookies"))
+
+        val plain = DownloadRequestFactory.download(DownloadJob(id = "p", request = DownloadRequest(url = "https://youtu.be/x")), staging)
+        assertFalse(plain.hasOption("--cookies"))
+        assertFalse(plain.hasOption("--extractor-args"))
+    }
+
     private fun built(request: DownloadRequest) =
         DownloadRequestFactory.download(
             DownloadJob(id = "test-job", request = request),

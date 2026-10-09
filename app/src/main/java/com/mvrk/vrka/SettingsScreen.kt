@@ -942,6 +942,9 @@ internal fun SettingsScreen(
         SettingsHeading("Share to Mi5G Dl")
         com.mvrk.vrka.mi5g.ui.ShareSettingsSection(settings, repository)
 
+        SettingsHeading("YouTube account (optional)")
+        com.mvrk.vrka.mi5g.ui.YouTubeAccountSection()
+
         SettingsHeading("Mi5G Dl App Updates")
         com.mvrk.vrka.mi5g.ui.UpdateSection(settings, repository)
 

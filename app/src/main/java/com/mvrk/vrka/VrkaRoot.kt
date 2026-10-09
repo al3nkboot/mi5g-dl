@@ -507,8 +507,10 @@ private fun FallbackInteractionOverlay(
                         }
                     }
 
+                    val pageStatus by fallbackState.engine.pageStatus.collectAsStateWithLifecycle()
                     val statusMessage = when {
                         candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
+                        pageStatus != null -> pageStatus!!
                         else -> "Select server / Press Play to initiate media stream"
                     }
                     Text(

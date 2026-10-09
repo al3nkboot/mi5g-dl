@@ -1,0 +1,23 @@
+{
+  "manifest_version": 2,
+  "name": "Mi5G Dl YouTube sign-in helper",
+  "version": "1.0.0",
+  "description": "Reads youtube.com/google.com cookies of the in-app sign-in session so Mi5G Dl can pass them to yt-dlp. Built into Mi5G Dl; talks only to the app.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "youtube-cookies@mi5gdl.midroid",
+      "strict_min_version": "115.0"
+    }
+  },
+  "permissions": [
+    "cookies",
+    "nativeMessaging",
+    "geckoViewAddons",
+    "*://*.youtube.com/*",
+    "*://*.google.com/*"
+  ],
+  "incognito": "spanning",
+  "background": {
+    "scripts": ["background.js"]
+  }
+}

@@ -61,6 +61,8 @@ internal fun jobProgressSummary(job: DownloadJob): String = buildList {
 internal fun friendlyFailureTitle(job: DownloadJob): String {
     val text = "${job.detail} ${job.error}".lowercase()
     return when {
+        "youtube bot check" in text || com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.isBotCheck(text) ->
+            "YouTube bot check — try again later"
         "publish" in text || "mediastore" in text || "output file" in text ->
             "Download failed during publishing"
         "timed out" in text && ("browser" in text || "webview" in text) ->
@@ -82,6 +84,10 @@ internal fun friendlyFailureTitle(job: DownloadJob): String {
 internal fun friendlyFailureDetail(job: DownloadJob): String {
     val title = friendlyFailureTitle(job)
     return when {
+        title == "YouTube bot check — try again later" ->
+            "YouTube asked to confirm you’re not a bot on this network (temporary, not the video’s fault). " +
+                "Tap Retry in a few minutes, sign in under Settings → YouTube account (optional), " +
+                "or update yt-dlp (Nightly) in Settings → Components."
         title == "Couldn’t reach this site" -> "Check the connection, then try again."
         title == "Couldn’t find a downloadable format" ->
             "The page did not expose a supported non-DRM media format."

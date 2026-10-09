@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -464,7 +465,7 @@ class VrkaDownloadManager(
                 Log.e("VRKA", "Custom yt-dlp attempt failed; checking normal recovery paths: ${safeError(failure)}")
             } else {
                 val metadata = runCatching {
-                    YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(job.request))
+                    YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(job.request, youtubeContext()))
                 }.getOrNull()
                 if (isCancelled(jobId)) return
                 if (metadata != null) {
@@ -518,6 +519,20 @@ class VrkaDownloadManager(
                         priorCategories.add(retryCategory)
                     }
                 }
+            }
+
+            // Mi5G Dl: YouTube bot check ("Sign in to confirm you're not a bot") — retry with other
+            // InnerTube player clients before giving up. Browser fallback cannot capture YouTube
+            // (SABR/UMP streaming), so the job fails with a clear explanation instead.
+            if (
+                failure != null &&
+                !customCommandMode &&
+                job.request.resolvedMediaUrl == null &&
+                com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.isYouTubeUrl(job.request.url) &&
+                !initialTransferStarted &&
+                !isCancelled(jobId)
+            ) {
+                failure = recoverYouTube(job, failure)
             }
 
             // Direct recovery retry: only retry if category in (CLOUDFLARE, HTTP) and transfer has not started
@@ -706,7 +721,9 @@ class VrkaDownloadManager(
             if (!isCancelled(jobId)) {
                 val failureMsg = safeError(error)
                 val fallbackFailed = currentStage.startsWith("Browser Fallback") || failureMsg.contains("browser fallback", ignoreCase = true)
-                val failureDetail = if (fallbackFailed) {
+                val failureDetail = if (error is YouTubeBotCheckException) {
+                    "YouTube bot check"
+                } else if (fallbackFailed) {
                     "Browser fallback could not find a media stream"
                 } else {
                     "Download failed"
@@ -753,7 +770,17 @@ class VrkaDownloadManager(
         }
     }
 
-    private suspend fun downloadOnce(job: DownloadJob, recoveryAttempt: Boolean = false) {
+    /** Mi5G Dl: optional signed-in YouTube cookies (app-private, never synced or logged). */
+    private val youtubeCookies by lazy { com.mvrk.vrka.mi5g.youtube.YouTubeCookieStore(context) }
+
+    private fun youtubeContext(plan: com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.ClientPlan? = null) =
+        DownloadRequestFactory.YouTubeContext(cookieFile = youtubeCookies.pathIfPresent(), plan = plan)
+
+    private suspend fun downloadOnce(
+        job: DownloadJob,
+        recoveryAttempt: Boolean = false,
+        youtubePlan: com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.ClientPlan? = null,
+    ) {
         if (isCancelled(job.id)) return
         val directory = stagingDirectory(job.id)
         update(
@@ -770,7 +797,7 @@ class VrkaDownloadManager(
         val response = try {
             val includeSubtitles = job.request.resolvedMediaUrl == null
             YoutubeDL.getInstance().execute(
-                DownloadRequestFactory.download(job, directory, recoveryAttempt, includeSubtitles = includeSubtitles),
+                DownloadRequestFactory.download(job, directory, recoveryAttempt, includeSubtitles = includeSubtitles, youtube = youtubeContext(youtubePlan)),
                 job.id,
             ) { progress, eta, line ->
                 outputLines.add(line)
@@ -1372,7 +1399,7 @@ class VrkaDownloadManager(
         if (!isHttpUrl(url)) return@withContext null
         runCatching {
             ensureInitialized()
-            val info = YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(DownloadRequest(url = url)))
+            val info = YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(DownloadRequest(url = url), youtubeContext()))
             MediaProbe(info.title, info.duration.takeIf { it > 0 }?.toDouble())
         }.onFailure { Log.w("VRKA", "Metadata probe failed: ${safeError(it)}") }.getOrNull()
     }
@@ -1420,6 +1447,55 @@ class VrkaDownloadManager(
     private fun normalizedVersion(value: String): String =
         value.removePrefix("yt-dlp ").trim()
 
+    /** Thrown when every YouTube attempt hit the bot check; message starts with BOT_CHECK_MARKER. */
+    class YouTubeBotCheckException(message: String, cause: Throwable?) : RuntimeException(message, cause)
+
+    private fun failureText(error: Throwable?): String = buildString {
+        append(error?.message.orEmpty())
+        (error as? DownloadExecutionException)?.outputTail?.takeLast(40)?.let { append('\n').append(it.joinToString("\n")) }
+    }
+
+    /**
+     * Retries a failed YouTube download with alternative player clients (at most two extra
+     * attempts, short back-off). Returns null on success, otherwise the final failure.
+     */
+    private suspend fun recoverYouTube(job: DownloadJob, initial: Throwable): Throwable? {
+        val yt = com.mvrk.vrka.mi5g.youtube.YouTubeRecovery
+        val hasCookies = youtubeCookies.exists()
+        val plans = yt.plans(hasCookies)
+        val outcome = yt.runRetries(
+            initial = initial,
+            plans = plans,
+            textOf = ::failureText,
+            transferStarted = { (it as? DownloadExecutionException)?.transferStarted == true },
+            isCancelled = { isCancelled(job.id) },
+            sleep = { delay(it) },
+            onAttempt = { index, plan, sawBotCheck ->
+                Log.w("VRKA", "YouTube direct attempt rejected (${if (sawBotCheck) "bot check" else "no usable formats"}); retrying with player_client=${plan.clients}")
+                update(
+                    job.id,
+                    state = JobState.PREPARING,
+                    detail = "YouTube ${if (sawBotCheck) "bot check" else "refused the request"} — retrying with ${plan.label} (${index + 2}/${plans.size + 1})",
+                    persist = true,
+                )
+            },
+            attempt = { plan ->
+                cleanupStaging(job.id)
+                runCatching { downloadOnce(job, recoveryAttempt = false, youtubePlan = plan) }.exceptionOrNull()
+                    .also { if (it == null) Log.i("VRKA", "YouTube recovery succeeded with player_client=${plan.clients}") }
+            },
+        )
+        val failure = outcome.failure ?: return null
+        if (isCancelled(job.id)) return failure
+        val transferStarted = (failure as? DownloadExecutionException)?.transferStarted == true
+        return if (outcome.sawBotCheck && !transferStarted) {
+            YouTubeBotCheckException(
+                yt.failureMessage(hasCookies, outcome.extraAttempts + 1, settingsRepository.settings.value.updatePreference == UpdatePreference.NIGHTLY),
+                failure,
+            )
+        } else failure
+    }
+
     private fun shouldRetryDirect(error: Throwable): Boolean {
         val message = error.message.orEmpty().lowercase()
         val category = classifyDownloadError(message)
@@ -1438,6 +1514,7 @@ class VrkaDownloadManager(
 
     private fun safeError(error: Throwable): String {
         val raw = (error.message ?: error::class.java.simpleName)
+        if (com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.isBotCheckFailureMessage(raw)) return raw
         val cleaned = cleanErrorOutput(raw)
         val (_, guidance) = formatDownloadError(cleaned)
         val text = if (guidance.isNotBlank() && guidance != cleaned) {

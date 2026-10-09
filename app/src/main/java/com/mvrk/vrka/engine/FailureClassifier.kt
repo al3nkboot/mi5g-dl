@@ -227,6 +227,14 @@ fun classifyDownloadError(errorMessage: String): FailureCategory {
         return FailureCategory.BROWSER_RECOVERABLE
     }
 
+    // 10b. Mi5G Dl: YouTube's "Sign in to confirm you're not a bot" check. yt-dlp's message also
+    // mentions --cookies-from-browser, which previously classified it as COOKIES and started a
+    // browser fallback that can never capture YouTube (SABR/UMP streaming). It is an account/IP
+    // reputation wall: handled by the YouTube client-retry path and optional sign-in instead.
+    if (com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.isBotCheck(lower)) {
+        return FailureCategory.AUTH_REQUIRED
+    }
+
     // 11. Cookie database errors
     if (containsAny(lower,
             "cookies-from-browser",
@@ -294,7 +302,11 @@ fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
         FailureCategory.BROWSER_RECOVERABLE ->
             "yt-dlp could not read the site's player. Mi5G Dl will try the browser fallback."
         FailureCategory.AUTH_REQUIRED ->
-            "The site requires an authenticated browser session or account login."
+            if (com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.isBotCheck(cleaned)) {
+                "YouTube asked to confirm you're not a bot. Retry in a few minutes, sign in under Settings → YouTube account (optional), or update yt-dlp (Nightly) in Settings → Components."
+            } else {
+                "The site requires an authenticated browser session or account login."
+            }
         FailureCategory.COOKIES ->
             "The site appears to require an authenticated browser session or valid cookies."
         FailureCategory.NETWORK_ERROR, FailureCategory.TIMEOUT ->
@@ -450,10 +462,11 @@ fun isFailureBrowserRecoverable(
         errorMessage.contains("[youtube]", ignoreCase = true)
 
     if (isYouTube) {
-        if (category == FailureCategory.HTTP || category == FailureCategory.BROWSER_RECOVERABLE) {
-            return false
-        }
-        return category in listOf(FailureCategory.COOKIES, FailureCategory.CLOUDFLARE)
+        // Mi5G Dl: never open the browser fallback for YouTube. The YouTube web player streams via
+        // SABR/UMP POST requests that the media detector cannot hand to yt-dlp, so the fallback
+        // could only end in a blank/unusable page and "no downloadable format". YouTube failures
+        // are recovered on the direct path (player-client retries, optional sign-in cookies).
+        return false
     }
 
     // Browser-recoverable categories

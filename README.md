@@ -36,6 +36,13 @@ See [MODIFICATIONS.md](MODIFICATIONS.md) for the full list. In short:
   - If GitHub rate-limits a check, the app shows when to try again and retries once after the reset time.
   - An optional fine-grained token (read-only *Contents*, this repo only) can be added under Settings → Mi5G Dl App Updates → *Advanced*. It's only needed if the repo becomes private, or to raise the rate limit. It's stored with Android Keystore and sent only to `api.github.com`.
   - **Settings & history sync** through one JSON file on Google Drive, picked with the system file picker (no sign-in). It never syncs secrets or the download folder.
+- 1.1.2 (versionCode 4): YouTube "Sign in to confirm you're not a bot" fix.
+  - The bot check is classified as an auth problem (it used to be treated as a cookie problem and sent to the browser fallback). yt-dlp is retried up to twice with other YouTube clients (`--extractor-args youtube:player_client=…`) and back-off.
+  - YouTube links never go to the browser fallback. The YouTube web player streams through SABR/UMP, which the media detector can't capture.
+  - If YouTube still refuses, Queue and History say so plainly and suggest Retry, sign-in or a yt-dlp update.
+  - **YouTube account (optional)** in Settings: you sign in through a private built-in browser. youtube.com/google.com cookies are saved to app-private no-backup storage and passed with `--cookies` for YouTube links only. They are never synced or logged, and Sign out deletes them. Google may block sign-in in embedded browsers.
+  - New installs use the yt-dlp **Nightly** channel by default.
+  - The browser fallback now shows page loading and load errors instead of a silent blank view.
 
 ### Releases / self-update convention
 

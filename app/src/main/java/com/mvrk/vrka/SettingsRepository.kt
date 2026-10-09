@@ -32,7 +32,8 @@ data class AppSettings(
     val defaultQuality: VideoQuality = VideoQuality.BEST,
     val defaultAudioFormat: AudioFormat = AudioFormat.MP3,
     val defaultMp3Bitrate: Int = 320,
-    val updatePreference: UpdatePreference = UpdatePreference.STABLE,
+    // Mi5G Dl 1.1.2: Nightly by default — yt-dlp recommends nightly builds for YouTube reliability.
+    val updatePreference: UpdatePreference = UpdatePreference.NIGHTLY,
     val concurrency: Int = 1,
     val concurrentDownloadsEnabled: Boolean = false,
     val maxConcurrentDownloads: Int = 2,
@@ -317,7 +318,7 @@ class SettingsRepository(
                 .takeIf { it in setOf(128, 160, 192, 224, 256, 320) } ?: 320,
             updatePreference = enumValue(
                 preferences[Keys.updatePreference],
-                UpdatePreference.STABLE,
+                UpdatePreference.NIGHTLY,
             ),
             concurrency = effectiveConcurrency,
             concurrentDownloadsEnabled = concurrentEnabled,
