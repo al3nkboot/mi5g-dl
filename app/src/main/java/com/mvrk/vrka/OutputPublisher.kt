@@ -61,7 +61,7 @@ internal class OutputPublisher(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOWNLOADS + "/VRKA",
+                    Environment.DIRECTORY_DOWNLOADS + "/Mi5G Dl",
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
@@ -167,7 +167,7 @@ internal class OutputPublisher(
         }
 
         fun formatDisplayPath(treeUriString: String?): String {
-            if (treeUriString.isNullOrBlank()) return "Downloads/VRKA"
+            if (treeUriString.isNullOrBlank()) return "Downloads/Mi5G Dl"
             return runCatching {
                 val docId = if (treeUriString.contains("/tree/")) {
                     val raw = treeUriString.substringAfter("/tree/").substringBefore("?")
@@ -187,8 +187,8 @@ internal class OutputPublisher(
                 } else {
                     docId
                 }
-                cleanPath.ifBlank { "Downloads/VRKA" }
-            }.getOrDefault("Downloads/VRKA")
+                cleanPath.ifBlank { "Downloads/Mi5G Dl" }
+            }.getOrDefault("Downloads/Mi5G Dl")
         }
     }
 }
@@ -209,7 +209,7 @@ internal object SafeOutputNames {
             .joinToString("")
             .replace(Regex("\\s+"), " ")
             .trim(' ', '.')
-        val fallback = "VRKA-" + System.currentTimeMillis().toString(36).takeLast(8)
+        val fallback = "Mi5GDl-" + System.currentTimeMillis().toString(36).takeLast(8)
         val stem = truncateUtf8(rawStem.ifBlank { fallback }, MAX_STEM_BYTES)
             .trim(' ', '.')
             .ifBlank { fallback }

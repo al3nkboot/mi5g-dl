@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">VRKA</string>
+    <string name="app_name">Mi5G Dl</string>
     <string name="app_update_notification_channel">App updates</string>
     <string name="app_update_notification_channel_description">Application update download progress and ready-to-install alerts</string>
     <string name="app_update_downloading">Downloading version %1$s</string>

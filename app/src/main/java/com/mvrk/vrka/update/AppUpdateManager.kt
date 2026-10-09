@@ -38,6 +38,8 @@ class AppUpdateManager(
     private val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val apiEndpoint: String = DEFAULT_API_ENDPOINT,
+    /** Mi5G Dl fork: upstream VRKA self-update is disabled (BuildConfig.APP_SELF_UPDATE_ENABLED = false). */
+    private val selfUpdateEnabled: Boolean = BuildConfig.APP_SELF_UPDATE_ENABLED,
 ) {
     private val _checkState = MutableStateFlow<AppUpdateCheckState>(AppUpdateCheckState.Idle)
     val checkState: StateFlow<AppUpdateCheckState> = _checkState.asStateFlow()
@@ -53,7 +55,23 @@ class AppUpdateManager(
     }
 
     init {
-        restoreStateAndObserveWorker()
+        if (selfUpdateEnabled) {
+            restoreStateAndObserveWorker()
+        } else {
+            discardUpstreamUpdateState()
+        }
+    }
+
+    /** Mi5G Dl: drop any staged upstream update state/work so nothing can be offered or installed. */
+    private fun discardUpstreamUpdateState() {
+        runCatching {
+            val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.getString(AppUpdateDownloadWorker.KEY_FILE_PATH, null)?.let { deletePrivateUpdateFile(File(it)) }
+            prefs.edit().clear().apply()
+        }
+        runCatching {
+            WorkManager.getInstance(context).cancelUniqueWork(AppUpdateDownloadWorker.WORK_NAME)
+        }
     }
 
     private fun restoreStateAndObserveWorker() {
@@ -140,6 +158,7 @@ class AppUpdateManager(
 
     /** Reopens the persisted update-ready state when the completion notification is tapped. */
     fun restoreReadyUpdateFlow() {
+        if (!selfUpdateEnabled) return
         val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
         restoreSavedUpdateState(prefs, forceShowDialog = true)
     }
@@ -251,6 +270,15 @@ class AppUpdateManager(
     }
 
     fun checkForUpdate(isManual: Boolean = false) {
+        if (!selfUpdateEnabled) {
+            Log.i(TAG, "App self-update disabled in Mi5G Dl fork; not contacting upstream VRKA releases")
+            _checkState.value = if (isManual) {
+                AppUpdateCheckState.Error(SELF_UPDATE_DISABLED_MESSAGE)
+            } else {
+                AppUpdateCheckState.Idle
+            }
+            return
+        }
         if (activeCheckJob?.isActive == true) {
             Log.d(TAG, "Update check already in progress")
             return
@@ -333,6 +361,10 @@ class AppUpdateManager(
     }
 
     fun downloadAndInstall(release: AppReleaseInfo) {
+        if (!selfUpdateEnabled) {
+            _downloadState.value = AppUpdateDownloadState.Error(SELF_UPDATE_DISABLED_MESSAGE)
+            return
+        }
         if (!isValidReleaseForDownload(release)) {
             _downloadState.value = AppUpdateDownloadState.Error("Update release metadata failed security validation")
             return
@@ -376,6 +408,10 @@ class AppUpdateManager(
     }
 
     fun installApk(file: File) {
+        if (!selfUpdateEnabled) {
+            _downloadState.value = AppUpdateDownloadState.Error(SELF_UPDATE_DISABLED_MESSAGE)
+            return
+        }
         try {
             val canonicalFile = file.canonicalFile
             val prefs = context.getSharedPreferences(AppUpdateDownloadWorker.PREFS_NAME, Context.MODE_PRIVATE)
@@ -539,6 +575,8 @@ class AppUpdateManager(
     }
 
     companion object {
+        const val SELF_UPDATE_DISABLED_MESSAGE =
+            "App updates are disabled in Mi5G Dl. Upstream VRKA releases are not installed over this app."
         private const val TAG = "VRKA-AppUpdater"
         private const val USER_AGENT = "VRKA-Android-AppUpdater"
         private const val DEFAULT_API_ENDPOINT =

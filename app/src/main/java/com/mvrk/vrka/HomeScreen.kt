@@ -132,7 +132,7 @@ internal fun HomeScreen(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                "VRKA",
+                "Mi5G Dl",
                 style = MaterialTheme.typography.headlineLarge.copy(
                     fontWeight = FontWeight.Black,
                     letterSpacing = 2.sp,

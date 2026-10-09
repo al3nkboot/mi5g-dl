@@ -673,7 +673,7 @@ class VrkaDownloadManager(
                                     }
                                     if (Regex("\\b(401|403)\\b").containsMatchIn(failureEvidence)) {
                                         failure = RuntimeException(
-                                            "HTTP 401/403 rejection after browser fallback; VRKA withheld browser credential/custom header(s) because yt-dlp cannot safely scope them across redirects and media segments."
+                                            "HTTP 401/403 rejection after browser fallback; Mi5G Dl withheld browser credential/custom header(s) because yt-dlp cannot safely scope them across redirects and media segments."
                                         )
                                     }
                                 }
@@ -916,7 +916,7 @@ class VrkaDownloadManager(
             val base = if (transcoded) "Saved (transcoded to Opus)" else "Saved (native Opus stream copy)"
             if (jobSubNote.isNotBlank()) "$base • $jobSubNote" else base
         } else if (published.size == 1) {
-            if (jobSubNote.isNotBlank()) "Saved to Downloads/VRKA ($jobSubNote)" else "Saved to Downloads/VRKA"
+            if (jobSubNote.isNotBlank()) "Saved to Downloads/Mi5G Dl ($jobSubNote)" else "Saved to Downloads/Mi5G Dl"
         } else {
             if (jobSubNote.isNotBlank()) "Saved ${published.size} files ($jobSubNote)" else "Saved ${published.size} files"
         }
@@ -1034,7 +1034,7 @@ class VrkaDownloadManager(
                         job.id,
                         state = JobState.DONE,
                         progress = 100f,
-                        detail = if (published.size == 1) "Saved to Downloads/VRKA" else "Saved ${published.size} files",
+                        detail = if (published.size == 1) "Saved to Downloads/Mi5G Dl" else "Saved ${published.size} files",
                         outputUris = published,
                         error = "",
                         persist = true,
@@ -1211,7 +1211,7 @@ class VrkaDownloadManager(
         val host = runCatching { Uri.parse(job.request.url).host.orEmpty().removePrefix("www.") }
             .getOrDefault("")
             .takeIf(String::isNotBlank)
-        val stem = title ?: host ?: "VRKA-${job.id.take(8)}"
+        val stem = title ?: host ?: "Mi5GDl-${job.id.take(8)}"
         val suffix = if (total > 1) " ${index + 1}" else ""
         val extension = file.extension
         return if (extension.isBlank()) stem + suffix else "$stem$suffix.$extension"

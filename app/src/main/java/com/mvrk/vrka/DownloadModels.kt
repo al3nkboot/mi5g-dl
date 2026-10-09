@@ -60,7 +60,7 @@ enum class SaveLocationMode(val label: String) {
 }
 
 enum class FontPreference(val label: String) {
-    VRKA_FONT("VRKA Font"),
+    VRKA_FONT("Mi5G Dl Font"),
     SYSTEM_FONT("System Font"),
 }
 

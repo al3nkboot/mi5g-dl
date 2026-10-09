@@ -198,8 +198,8 @@ internal fun JobsScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     androidx.compose.foundation.Image(
-                        painter = androidx.compose.ui.res.painterResource(R.drawable.vrka_logo_512),
-                        contentDescription = "VRKA",
+                        painter = androidx.compose.ui.res.painterResource(R.drawable.mi5g_logo),
+                        contentDescription = "Mi5G Dl",
                         contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                         modifier = Modifier.size(68.dp),
                     )

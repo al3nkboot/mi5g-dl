@@ -290,7 +290,7 @@ internal fun SettingsScreen(
                 )
             }
             Text(
-                "H.264 conversion can take significantly more time and use extra battery, CPU, and temporary storage. VRKA checks the downloaded codec and skips conversion when it is already H.264.",
+                "H.264 conversion can take significantly more time and use extra battery, CPU, and temporary storage. Mi5G Dl checks the downloaded codec and skips conversion when it is already H.264.",
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                 color = VrkaTokens.TextTertiary,
                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
@@ -303,7 +303,7 @@ internal fun SettingsScreen(
                 subtitle = if (settings.customCommandMode) {
                     "Enabled • new downloads use the selected template"
                 } else {
-                    "Disabled • normal VRKA download options are used"
+                    "Disabled • normal Mi5G Dl download options are used"
                 },
             ) {
                 Switch(
@@ -316,7 +316,7 @@ internal fun SettingsScreen(
                 )
             }
             Text(
-                "Templates are argument lists, not shell commands. VRKA controls the staging path. A failed eligible custom attempt can still use Browser Fallback, which uses its standard yt-dlp handoff and ignores the template. Unsafe output paths, shell hooks, and credential-bearing headers are blocked.",
+                "Templates are argument lists, not shell commands. Mi5G Dl controls the staging path. A failed eligible custom attempt can still use Browser Fallback, which uses its standard yt-dlp handoff and ignores the template. Unsafe output paths, shell hooks, and credential-bearing headers are blocked.",
                 style = MaterialTheme.typography.bodySmall.copy(fontFamily = VrkaMonoFamily),
                 color = VrkaTokens.TextTertiary,
                 modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
@@ -956,7 +956,7 @@ internal fun SettingsScreen(
                     verticalArrangement = Arrangement.Center,
                 ) {
                     Text(
-                        text = "VRKA v${BuildConfig.VERSION_NAME}",
+                        text = "Mi5G Dl",
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.Bold,
@@ -964,17 +964,33 @@ internal fun SettingsScreen(
                         ),
                         color = VrkaTokens.TextPrimary,
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "By MVRK",
-                        style = MaterialTheme.typography.bodyMedium.copy(
+                        text = "v${BuildConfig.VERSION_NAME}",
+                        style = MaterialTheme.typography.bodySmall.copy(
                             fontFamily = VrkaMonoFamily,
                         ),
                         color = VrkaTokens.TextSecondary,
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "GitHub",
+                        text = "Personal build for @midroid5G",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = VrkaMonoFamily,
+                        ),
+                        color = VrkaTokens.TextSecondary,
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Based on VRKA by MVRK (MaverickRox), GPL-3.0",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = VrkaMonoFamily,
+                        ),
+                        color = VrkaTokens.TextPrimary,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "github.com/MaverickRox/VRKA-Android",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = VrkaMonoFamily,
                             fontWeight = FontWeight.SemiBold,
@@ -985,11 +1001,23 @@ internal fun SettingsScreen(
                             uriHandler.openUri("https://github.com/MaverickRox/VRKA-Android")
                         },
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "License: GNU GPL v3.0",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontFamily = VrkaMonoFamily,
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                        ),
+                        color = VrkaTokens.TextSecondary,
+                        modifier = Modifier.clickable {
+                            uriHandler.openUri("https://www.gnu.org/licenses/gpl-3.0.html")
+                        },
+                    )
                 }
 
                 androidx.compose.foundation.Image(
-                    painter = painterResource(R.drawable.vrka_logo_512),
-                    contentDescription = "VRKA Logo",
+                    painter = painterResource(R.drawable.mi5g_logo),
+                    contentDescription = "Mi5G Dl Logo",
                     contentScale = androidx.compose.ui.layout.ContentScale.Fit,
                     modifier = Modifier.size(72.dp),
                 )
@@ -999,27 +1027,13 @@ internal fun SettingsScreen(
             VrkaDivider()
             Spacer(modifier = Modifier.height(4.dp))
 
+            // Mi5G Dl: the upstream VRKA GitHub self-updater is disabled in this fork so that
+            // official VRKA APKs are never downloaded/installed over Mi5G Dl.
             VrkaSettingRow(
                 title = "App Updates",
-                subtitle = when (val state = appUpdateState) {
-                    is com.mvrk.vrka.update.AppUpdateCheckState.Checking -> "Checking for updates..."
-                    is com.mvrk.vrka.update.AppUpdateCheckState.UpdateAvailable -> "v${state.release.version} available"
-                    is com.mvrk.vrka.update.AppUpdateCheckState.UpToDate -> "VRKA is up to date"
-                    is com.mvrk.vrka.update.AppUpdateCheckState.Error -> state.message
-                    else -> "Check GitHub for new releases"
-                },
+                subtitle = "Disabled in Mi5G Dl (personal fork). Upstream VRKA releases are not installed. yt-dlp and uBlock component updates above still work.",
                 isSubtitleMono = true,
-            ) {
-                VrkaOutlinedButton(
-                    text = if (appUpdateState is com.mvrk.vrka.update.AppUpdateCheckState.Checking) "Checking..." else "Check for Updates",
-                    onClick = {
-                        manualCheckRequested = true
-                        appUpdateManager.checkForUpdate(isManual = true)
-                    },
-                    enabled = appUpdateState !is com.mvrk.vrka.update.AppUpdateCheckState.Checking,
-                    height = 32.dp,
-                )
-            }
+            ) {}
         }
         Spacer(Modifier.navigationBarsPadding().height(110.dp))
     }

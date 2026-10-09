@@ -24,6 +24,7 @@ val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream
     Properties().apply { load(input) }
 }
 val geckoViewVersion = "156.0.20260921121718"
+val upstreamVrkaVersion = "5.0.2"
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.mvrk.vrka"
@@ -34,16 +35,20 @@ extensions.configure<ApplicationExtension> {
     }
 
     defaultConfig {
-        applicationId = "com.mvrk.vrka"
+        // Mi5G Dl fork: new applicationId so it installs alongside upstream VRKA (code namespace unchanged).
+        applicationId = "com.midroid.mi5gdl"
         minSdk {
             version = release(26)
         }
         targetSdk {
             version = release(36)
         }
-        versionCode = 50002
-        versionName = "5.0.2"
+        versionCode = 1
+        versionName = "1.0.0 (based on VRKA $upstreamVrkaVersion)"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
+        buildConfigField("String", "UPSTREAM_VRKA_VERSION", "\"$upstreamVrkaVersion\"")
+        // Mi5G Dl: upstream VRKA GitHub self-update is disabled so VRKA APKs are never installed over this fork.
+        buildConfigField("boolean", "APP_SELF_UPDATE_ENABLED", "false")
 
         ndk {
             abiFilters += "arm64-v8a"
@@ -71,6 +76,8 @@ extensions.configure<ApplicationExtension> {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+        // Mi5G Dl: needed for the Robolectric screenshot test (ScreenshotRenderTest).
+        unitTests.isIncludeAndroidResources = true
     }
 
     packaging {
@@ -169,6 +176,10 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    // Mi5G Dl: Robolectric + Compose UI test for rendering screenshots on the JVM (test-only).
+    testImplementation("org.robolectric:robolectric:4.16")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.json:json:20240303")
     testImplementation("xpp3:xpp3:1.1.4c")
     testImplementation("xmlpull:xmlpull:1.1.3.1")
@@ -193,3 +204,10 @@ dependencies {
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
 
+
+// Mi5G Dl: pass -Pmi5gScreenshotsDir=<dir> to render Robolectric screenshots (ScreenshotRenderTest).
+val mi5gScreenshotsDir = providers.gradleProperty("mi5gScreenshotsDir").orElse("")
+tasks.withType<Test>().configureEach {
+    maxHeapSize = "1536m"
+    systemProperty("mi5g.screenshots.dir", mi5gScreenshotsDir.get())
+}

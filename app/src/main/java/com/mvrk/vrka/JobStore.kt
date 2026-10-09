@@ -121,7 +121,7 @@ internal class JobStore(private val target: File) {
         val restoredError = if (savedState.isTerminal) {
             value.optString("error")
         } else {
-            "Download was interrupted when Android stopped VRKA. Tap retry."
+            "Download was interrupted when Android stopped Mi5G Dl. Tap retry."
         }
 
         val storedAudioFormat = encodedRequest.optString("audioFormat")

@@ -286,13 +286,13 @@ fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
         FailureCategory.SUCCESS ->
             "Download completed successfully."
         FailureCategory.DRM ->
-            "This media appears to be DRM-protected. VRKA will not bypass DRM; use a lawful non-DRM source."
+            "This media appears to be DRM-protected. Mi5G Dl will not bypass DRM; use a lawful non-DRM source."
         FailureCategory.CLOUDFLARE ->
             "The site returned a Cloudflare verification response. Browser impersonation, cookies, or the on-demand verification window may help."
         FailureCategory.IMPERSONATION ->
             "The selected browser impersonation target is unavailable in this yt-dlp build."
         FailureCategory.BROWSER_RECOVERABLE ->
-            "yt-dlp could not read the site's player. VRKA will try the browser fallback."
+            "yt-dlp could not read the site's player. Mi5G Dl will try the browser fallback."
         FailureCategory.AUTH_REQUIRED ->
             "The site requires an authenticated browser session or account login."
         FailureCategory.COOKIES ->
@@ -319,7 +319,7 @@ fun formatDownloadError(errorMessage: String): Pair<FailureCategory, String> {
             }
         FailureCategory.HTTP ->
             if (cleaned.contains("browser credential/custom header", ignoreCase = true)) {
-                "The site rejected the browser-fallback transfer. VRKA withheld credential-like browser headers because yt-dlp cannot safely scope them across redirects and media segments."
+                "The site rejected the browser-fallback transfer. Mi5G Dl withheld credential-like browser headers because yt-dlp cannot safely scope them across redirects and media segments."
             } else if (isSubtitleFailure(cleaned, "")) {
                 "The site rate-limited or rejected the subtitle request (HTTP 429 Too Many Requests). Try downloading without subtitles."
             } else if (cleaned.contains("429", ignoreCase = true)) {

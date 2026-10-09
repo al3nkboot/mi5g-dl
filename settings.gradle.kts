@@ -16,6 +16,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VRKA-Android"
+rootProject.name = "Mi5G-Dl"
 include(":app")
 

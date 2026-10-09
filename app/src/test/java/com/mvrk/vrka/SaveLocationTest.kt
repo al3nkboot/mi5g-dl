@@ -27,8 +27,8 @@ class SaveLocationTest {
 
     @Test
     fun formatDisplayPathReturnsCleanUserFacingPaths() {
-        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(null))
-        assertEquals("Downloads/VRKA", OutputPublisher.formatDisplayPath(""))
+        assertEquals("Downloads/Mi5G Dl", OutputPublisher.formatDisplayPath(null))
+        assertEquals("Downloads/Mi5G Dl", OutputPublisher.formatDisplayPath(""))
         assertEquals(
             "Download/VRKA",
             OutputPublisher.formatDisplayPath("content://com.android.externalstorage.documents/tree/primary%3ADownload%2FVRKA"),

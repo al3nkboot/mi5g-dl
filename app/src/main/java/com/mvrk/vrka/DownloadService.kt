@@ -86,7 +86,7 @@ class DownloadService : Service() {
                 .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val title = job?.title?.ifBlank { "VRKA download" } ?: "VRKA"
+        val title = job?.title?.ifBlank { "Mi5G Dl download" } ?: "Mi5G Dl"
         val status = job?.let(::jobStatusLabel) ?: "Preparing"
         val summary = job?.let {
             val progress = jobProgressSummary(it)
@@ -98,7 +98,7 @@ class DownloadService : Service() {
             .setColor(ContextCompat.getColor(this, R.color.vrka_purple))
             .setContentTitle(title)
             .setContentText(summary)
-            .setSubText("VRKA • $status")
+            .setSubText("Mi5G Dl • $status")
             .setStyle(NotificationCompat.BigTextStyle().bigText(summary))
             .setContentIntent(openIntent)
             .setOnlyAlertOnce(true)
@@ -132,7 +132,7 @@ class DownloadService : Service() {
             "Active downloads",
             NotificationManager.IMPORTANCE_LOW,
         ).apply {
-            description = "Progress for downloads started in VRKA"
+            description = "Progress for downloads started in Mi5G Dl"
             setShowBadge(false)
         }
         getSystemService(NotificationManager::class.java).createNotificationChannel(channel)

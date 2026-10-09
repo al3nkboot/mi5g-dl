@@ -104,7 +104,7 @@ internal object CustomCommandPolicy {
                 option.startsWith("-o") && option.length > 2 || option.startsWith("--exec") ||
                 option.startsWith("--external-downloader") || option.startsWith("--downloader")
             ) {
-                return "This template option is managed by VRKA or can execute another command: $option"
+                return "This template option is managed by Mi5G Dl or can execute another command: $option"
             }
             expectsValue = '=' !in argument && option in valueOptions
             expectedOption = if (expectsValue) option else ""

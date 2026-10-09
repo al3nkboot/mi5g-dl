@@ -31,7 +31,7 @@ data class DiagnosticEntry(
     val acquisitionMethod: String,
 ) {
     fun toFormattedString(): String = buildString {
-        appendLine("--- VRKA DIAGNOSTIC REPORT ---")
+        appendLine("--- MI5G DL DIAGNOSTIC REPORT (based on VRKA ${BuildConfig.UPSTREAM_VRKA_VERSION}) ---")
         appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(timestamp))}")
         appendLine("Job ID: $jobId")
         appendLine("Title: ${DiagnosticStore.sanitizeText(title).take(200)}")

@@ -2,4 +2,6 @@
     <color name="vrka_purple">#6F30D5</color>
     <color name="vrka_icon_background">#000000</color>
     <color name="vrka_black">#000000</color>
+    <!-- Mi5G Dl splash backdrop (dark purple) -->
+    <color name="mi5g_splash_icon_bg">#2B0A63</color>
 </resources>

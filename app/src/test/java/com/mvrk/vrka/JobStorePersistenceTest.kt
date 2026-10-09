@@ -129,7 +129,7 @@ class JobStorePersistenceTest {
             assertEquals("Interrupted", job.detail)
             assertTrue(
                 "Must inform user download was interrupted with retry prompt",
-                job.error.contains("interrupted when Android stopped VRKA") && job.error.contains("Tap retry"),
+                job.error.contains("interrupted when Android stopped Mi5G Dl") && job.error.contains("Tap retry"),
             )
         }
     }
