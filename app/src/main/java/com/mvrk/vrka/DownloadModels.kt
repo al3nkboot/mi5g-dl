@@ -109,6 +109,10 @@ data class DownloadRequest(
     val resolvedMediaUrl: String? = null,
     val resolvedHeaders: Map<String, String> = emptyMap(),
     val resolvedHeadersOrigin: String = "",
+    /** Mi5G Dl 1.2.0: batch id shared by items queued from one playlist (runs them one at a time). */
+    val playlistGroup: String = "",
+    /** Mi5G Dl 1.2.0: subfolder (playlist title) the item is saved into. */
+    val playlistFolder: String = "",
 )
 
 @Immutable

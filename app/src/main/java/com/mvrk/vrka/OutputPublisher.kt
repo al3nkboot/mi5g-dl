@@ -20,15 +20,16 @@ internal class OutputPublisher(
         file: File,
         requestedName: String = file.name,
         destinationTreeUri: String? = null,
+        subfolder: String = "",
     ): Uri = synchronized(publishLock) {
         require(file.isFile) { "Completed output is missing." }
         val safeName = SafeOutputNames.sanitize(requestedName, file.extension)
         val destination = destinationTreeUri?.takeIf { it.isNotBlank() }
             ?: settingsRepository.settings.value.outputTreeUri.takeIf { it.isNotBlank() }
         val uri = if (destination != null) {
-            publishToTree(file, Uri.parse(destination), safeName)
+            publishToTree(file, Uri.parse(destination), safeName, subfolder)
         } else {
-            publishToDownloads(file, safeName)
+            publishToDownloads(file, safeName, subfolder)
         }
         if (!file.delete()) file.deleteOnExit()
         uri
@@ -47,7 +48,7 @@ internal class OutputPublisher(
         context.contentResolver.openInputStream(uri)?.use { true } ?: false
     }.getOrDefault(false)
 
-    private fun publishToDownloads(file: File, name: String): Uri {
+    private fun publishToDownloads(file: File, name: String, subfolder: String): Uri {
         val resolver = context.contentResolver
         val mime = mimeType(name)
         val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -61,7 +62,7 @@ internal class OutputPublisher(
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    Environment.DIRECTORY_DOWNLOADS + "/Mi5G Dl",
+                    Environment.DIRECTORY_DOWNLOADS + "/Mi5G Dl" + subfolder.takeIf { it.isNotBlank() }?.let { "/$it" }.orEmpty(),
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
@@ -89,11 +90,12 @@ internal class OutputPublisher(
         }
     }
 
-    private fun publishToTree(file: File, tree: Uri, requestedName: String): Uri {
+    private fun publishToTree(file: File, tree: Uri, requestedName: String, subfolder: String): Uri {
         val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val rootId = DocumentsContract.getTreeDocumentId(tree)
+        val parentId = if (subfolder.isBlank()) rootId else childDirectoryId(tree, rootId, subfolder)
         val parent = DocumentsContract.buildDocumentUriUsingTree(tree, parentId)
-        val name = availableName(tree, requestedName)
+        val name = availableName(tree, requestedName, parentId)
         val uri = checkNotNull(
             DocumentsContract.createDocument(resolver, parent, mimeType(name), name),
         ) { "The selected folder refused the new file." }
@@ -109,9 +111,27 @@ internal class OutputPublisher(
         }
     }
 
-    private fun availableName(tree: Uri, requested: String): String {
+    /** Mi5G Dl: finds or creates the playlist subfolder inside the chosen tree. */
+    private fun childDirectoryId(tree: Uri, parentId: String, name: String): String {
         val resolver = context.contentResolver
-        val parentId = DocumentsContract.getTreeDocumentId(tree)
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
+        resolver.query(
+            children,
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE),
+            null, null, null,
+        )?.use { c ->
+            while (c.moveToNext()) {
+                if (c.getString(1) == name && c.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR) return c.getString(0)
+            }
+        }
+        val created = checkNotNull(
+            DocumentsContract.createDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, parentId), DocumentsContract.Document.MIME_TYPE_DIR, name),
+        ) { "The selected folder refused the playlist subfolder." }
+        return DocumentsContract.getDocumentId(created)
+    }
+
+    private fun availableName(tree: Uri, requested: String, parentId: String): String {
+        val resolver = context.contentResolver
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
         val existing = mutableSetOf<String>()
         resolver.query(

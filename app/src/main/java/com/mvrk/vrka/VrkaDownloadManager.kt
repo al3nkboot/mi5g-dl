@@ -159,12 +159,19 @@ class VrkaDownloadManager(
             } else {
                 1
             }
+            val heldBack = mutableListOf<String>()
             while (activeRunningJobs.size < maxConcurrent) {
                 val nextJobId = pendingQueue.poll() ?: break
                 if (isCancelled(nextJobId)) continue
                 val job = current(nextJobId)
                 if (job == null || job.state.isTerminal) continue
                 if (activeRunningJobs.containsKey(nextJobId)) continue
+                // Mi5G Dl: playlist items run sequentially, even when concurrent downloads are on.
+                val group = job.request.playlistGroup
+                if (group.isNotEmpty() && activeRunningJobs.keys.any { current(it)?.request?.playlistGroup == group }) {
+                    heldBack += nextJobId
+                    continue
+                }
 
                 val runningJob = scope.launch(Dispatchers.IO + CoroutineExceptionHandler { _, t ->
                     Log.e("VRKA", "Unhandled exception in background download job $nextJobId: ${safeError(t)}")
@@ -180,6 +187,7 @@ class VrkaDownloadManager(
                 }
                 activeRunningJobs[nextJobId] = runningJob
             }
+            heldBack.forEach(pendingQueue::add)
         }
     }
 
@@ -940,7 +948,7 @@ class VrkaDownloadManager(
         if (isCancelled(job.id)) throw CancellationException("Download cancelled")
         val published = outputs.mapIndexed { index, file ->
             val outputName = preferredOutputName(job, file, index, outputs.size)
-            publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+            publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri, subfolder = job.request.playlistFolder).toString()
         }
         val isOpus = job.request.mode == MediaMode.AUDIO && job.request.audioFormat == AudioFormat.OPUS
         val transcoded = isOpus && outputLines.any { it.contains("libopus", ignoreCase = true) || it.contains("Converting audio", ignoreCase = true) }
@@ -1060,7 +1068,7 @@ class VrkaDownloadManager(
                     }
                     val published = outputs.mapIndexed { index, file ->
                         val outputName = preferredOutputName(job, file, index, outputs.size)
-                        publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri).toString()
+                        publisher.publish(file, outputName, destinationTreeUri = job.request.destinationTreeUri, subfolder = job.request.playlistFolder).toString()
                     }
                     update(
                         job.id,
@@ -1402,6 +1410,18 @@ class VrkaDownloadManager(
             val info = YoutubeDL.getInstance().getInfo(DownloadRequestFactory.info(DownloadRequest(url = url), youtubeContext()))
             MediaProbe(info.title, info.duration.takeIf { it > 0 }?.toDouble())
         }.onFailure { Log.w("VRKA", "Metadata probe failed: ${safeError(it)}") }.getOrNull()
+    }
+
+    /** Mi5G Dl 1.2.0: lists playlist entries (titles/thumbnails) via yt-dlp --flat-playlist, no media download. */
+    suspend fun probePlaylist(url: String): com.mvrk.vrka.mi5g.playlist.PlaylistRules.Playlist = withContext(Dispatchers.IO) {
+        require(isHttpUrl(url)) { "Enter a valid http or https URL." }
+        ensureInitialized()
+        val request = DownloadRequestFactory.info(DownloadRequest(url = url, isPlaylist = true), youtubeContext()).apply {
+            addOption("--flat-playlist")
+            addOption("--yes-playlist")
+            addOption("-J")
+        }
+        com.mvrk.vrka.mi5g.playlist.PlaylistRules.parse(YoutubeDL.getInstance().execute(request).out)
     }
 
     /**

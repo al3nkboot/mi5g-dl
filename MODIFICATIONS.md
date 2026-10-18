@@ -63,6 +63,15 @@ All new code is in `app/src/main/java/com/mvrk/vrka/mi5g/` (GPL-3.0).
 
 Limitations: not tested on a physical device. Google may refuse sign-in in embedded browsers. Cookies and alternative clients don't always get past the bot check, which depends mostly on IP/network reputation. The Android clients may be limited to 360p. yt-dlp's EJS challenge solver is downloaded at runtime (`--remote-components ejs:github`).
 
+## 1.2.0 — Playlist downloads
+
+- `mi5g/playlist/PlaylistRules.kt`: playlist URL detection, `yt-dlp --flat-playlist -J` parsing, folder names, batch progress.
+- `mi5g/playlist/PlaylistSheet.kt`: Material 3 picker (select all / per item, one format+quality for all, thumbnails) and batch progress with failures + retry. Arabic strings in `values-ar`.
+- `VrkaDownloadManager`: `probePlaylist()`; items of one playlist run one at a time in the existing queue; output goes to a subfolder named after the playlist (`OutputPublisher`).
+- `DownloadRequest.playlistGroup/playlistFolder` (stored additively; 1.1.2 history loads unchanged).
+
+Limitations: real-network playlist downloads not tested on a physical device.
+
 Unchanged on purpose: Kotlin package/namespace `com.mvrk.vrka`, internal log tags, WorkManager
 names, yt-dlp output markers, the embedded "VRKA Media Detector" WebExtension (internal ID),
 upstream copyright/vendored-code headers, LICENSE and THIRD_PARTY_NOTICES.md.

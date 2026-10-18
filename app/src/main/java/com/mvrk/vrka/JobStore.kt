@@ -134,7 +134,9 @@ internal class JobStore(private val target: File) {
                         JSONObject(request.customHeaders.filterKeys { !HeaderValidation.isSensitiveHeader(it) }),
                     )
                     // Browser handoff URLs and headers stay in memory; they may contain credentials.
-                    .put("destinationTreeUri", request.destinationTreeUri),
+                    .put("destinationTreeUri", request.destinationTreeUri)
+                    .put("playlistGroup", request.playlistGroup)
+                    .put("playlistFolder", request.playlistFolder),
             )
     }
 
@@ -212,6 +214,8 @@ internal class JobStore(private val target: File) {
                 origin = encodedRequest.optString("origin"),
                 customHeaders = customHeadersMap,
                 resolvedHeadersOrigin = "",
+                playlistGroup = encodedRequest.optString("playlistGroup"),
+                playlistFolder = encodedRequest.optString("playlistFolder"),
                 destinationTreeUri = if (encodedRequest.isNull("destinationTreeUri")) null else encodedRequest.optString("destinationTreeUri").takeIf { it.isNotBlank() },
             ),
             state = restoredState,

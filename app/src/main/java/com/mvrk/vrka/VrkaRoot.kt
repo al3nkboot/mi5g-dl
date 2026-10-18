@@ -102,9 +102,11 @@ fun VrkaRoot(
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
     }
 
+    var playlistUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(incomingUrl) {
         if (!incomingUrl.isNullOrBlank()) {
             sharedUrlForHome = incomingUrl
+            if (com.mvrk.vrka.mi5g.playlist.PlaylistRules.looksLikePlaylist(incomingUrl!!)) playlistUrl = incomingUrl
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.DOWNLOAD))
         }
     }
@@ -232,6 +234,20 @@ fun VrkaRoot(
                         }
                     }
 
+                    playlistUrl?.let { pUrl ->
+                        com.mvrk.vrka.mi5g.playlist.PlaylistDialog(
+                            url = pUrl,
+                            settings = settings,
+                            jobs = jobs,
+                            onProbe = manager::probePlaylist,
+                            onEnqueue = { request ->
+                                runCatching { manager.enqueue(request) }.onFailure { e -> scope.launch { snackbar.showSnackbar(e.message ?: "Could not add download") } }
+                            },
+                            onRetry = { manager.retry(it) },
+                            onDismiss = { playlistUrl = null },
+                        )
+                    }
+
                     // Responsive swipeable pager: synchronized with bottom nav and indicator puck
                     HorizontalPager(
                         state = pagerState,
@@ -254,6 +270,7 @@ fun VrkaRoot(
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
                                     onProbeMedia = manager::probeMedia,
+                                    onOpenPlaylist = { playlistUrl = it },
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)

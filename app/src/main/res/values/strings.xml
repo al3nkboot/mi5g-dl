@@ -5,5 +5,23 @@
     <string name="app_update_downloading">Downloading version %1$s</string>
     <string name="app_update_ready_title">Update ready</string>
     <string name="share_label">Download with Mi5G Dl</string>
+    <string name="pl_detected">Playlist link detected</string>
+    <string name="pl_open">Choose videos</string>
+    <string name="pl_loading">Loading playlist…</string>
+    <string name="pl_load_failed">Could not read the playlist: %1$s</string>
+    <string name="pl_select_all">Select all</string>
+    <string name="pl_selected">%1$d of %2$d selected</string>
+    <string name="pl_video">Video</string>
+    <string name="pl_audio">Audio</string>
+    <string name="pl_quality">Quality</string>
+    <string name="pl_download">Download %1$d</string>
+    <string name="pl_overall">%1$d / %2$d</string>
+    <string name="pl_saving_to">Saved to folder: %1$s</string>
+    <string name="pl_failed">Failed (%1$d)</string>
+    <string name="pl_retry_failed">Retry failed</string>
+    <string name="pl_done">Playlist finished</string>
+    <string name="pl_close">Close</string>
+    <string name="pl_now">Now: %1$s</string>
+    <string name="pl_retry">Retry</string>
 </resources>
 

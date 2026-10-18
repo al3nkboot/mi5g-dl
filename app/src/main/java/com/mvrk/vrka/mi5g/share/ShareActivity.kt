@@ -70,6 +70,16 @@ class ShareActivity : ComponentActivity() {
         val manager = vrkaApplication.downloads
         lifecycleScope.launch {
             val settings = manager.settingsRepository.current()
+            // Mi5G Dl 1.2.0: playlists open the in-app picker instead of the single-video sheet.
+            if (com.mvrk.vrka.mi5g.playlist.PlaylistRules.looksLikePlaylist(url)) {
+                startActivity(
+                    Intent(this@ShareActivity, MainActivity::class.java)
+                        .putExtra(MainActivity.EXTRA_URL, url)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+                )
+                finish()
+                return@launch
+            }
             if (settings.shareSkipSheet) {
                 enqueue(buildRequest(url, settings, settings.defaultMode, "", "", settings.trimPreciseDefault), settings)
                 return@launch

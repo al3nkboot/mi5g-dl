@@ -66,6 +66,7 @@ internal fun HomeScreen(
     onEnqueue: (DownloadRequest) -> Unit,
     onUpdateDownloadLocation: (uri: String, mode: SaveLocationMode, configured: Boolean) -> Unit = { _, _, _ -> },
     onProbeMedia: (suspend (String) -> VrkaDownloadManager.MediaProbe?)? = null,
+    onOpenPlaylist: ((String) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -260,6 +261,16 @@ internal fun HomeScreen(
                 color = VrkaTokens.Error,
                 modifier = Modifier.padding(start = 6.dp, top = 6.dp),
             )
+        }
+        if (onOpenPlaylist != null && com.mvrk.vrka.mi5g.playlist.PlaylistRules.looksLikePlaylist(url)) {
+            androidx.compose.material3.ElevatedCard(Modifier.fillMaxWidth().padding(top = 10.dp)) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(androidx.compose.ui.res.stringResource(R.string.pl_detected), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    androidx.compose.material3.FilledTonalButton({ onOpenPlaylist(url) }) {
+                        Text(androidx.compose.ui.res.stringResource(R.string.pl_open))
+                    }
+                }
+            }
         }
 
         Spacer(Modifier.height(18.dp))
