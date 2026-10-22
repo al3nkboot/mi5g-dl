@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="docs/assets/vrka-wolf-256.png" width="96" height="96" alt="VRKA Logo" />
+  <img src="../assets/vrka-wolf-256.png" width="96" height="96" alt="VRKA Logo" />
   <h1>VRKA Android</h1>
   <p><strong>Native Android media downloader and passive web stream discovery.</strong></p>
 
@@ -22,7 +22,7 @@
 <br />
 
 <div align="center">
-  <img src="docs/assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
+  <img src="../assets/social-preview.png" alt="VRKA Android Social Preview" width="900" />
 </div>
 
 ---
@@ -51,24 +51,24 @@ Designed for local, on-device processing without an application analytics servic
 <table>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/download-dark.png" width="220" alt="Download Screen (Dark Mode)" /><br />
+      <img src="../screenshots/download-dark.png" width="220" alt="Download Screen (Dark Mode)" /><br />
       <b>Download Interface</b><br />
       <sub>Format, resolution & codec selection</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/queue-dark.png" width="220" alt="Queue Screen" /><br />
+      <img src="../screenshots/queue-dark.png" width="220" alt="Queue Screen" /><br />
       <b>Task Queue</b><br />
       <sub>Persistent queue with optional concurrency</sub>
     </td>
     <td align="center" width="33%">
-      <img src="docs/screenshots/history-dark.png" width="220" alt="History Screen" /><br />
+      <img src="../screenshots/history-dark.png" width="220" alt="History Screen" /><br />
       <b>Download History</b><br />
       <sub>Archived tasks & media files</sub>
     </td>
   </tr>
   <tr>
     <td align="center" width="33%">
-      <img src="docs/screenshots/download-light.png" width="220" alt="Download Screen (Light Mode)" /><br />
+      <img src="../screenshots/download-light.png" width="220" alt="Download Screen (Light Mode)" /><br />
       <b>Light Mode</b><br />
       <sub>Adaptive high-contrast light theme</sub>
     </td>
@@ -257,5 +257,5 @@ VRKA Android integrates the following open-source software:
 
 ## License
 
-VRKA Android is free software licensed under the [GNU General Public License v3.0](LICENSE).
-See the [LICENSE](LICENSE) file for details.
+VRKA Android is free software licensed under the [GNU General Public License v3.0](../../LICENSE).
+See the [LICENSE](../../LICENSE) file for details.

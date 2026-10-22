@@ -7,6 +7,8 @@
 
 ---
 
+> يُوزَّع التطبيق عبر GitHub فقط، وليس عبر Google Play. / Distributed via GitHub only, not Google Play.
+
 ## Attribution
 
 > **Based on VRKA by MVRK (MaverickRox), GPL-3.0** — https://github.com/MaverickRox/VRKA-Android
@@ -14,13 +16,13 @@
 > Mi5G Dl is a rebranded fork of VRKA Android 5.0.2 (upstream commit
 > `06524a676c8d1045fcc50e45a9bce8bfe737fa58`). All credit for the downloader engine,
 > browser fallback, UI and architecture goes to the upstream author. The original upstream
-> README is preserved unchanged in [README-VRKA-UPSTREAM.md](README-VRKA-UPSTREAM.md).
+> README is preserved unchanged in [README-VRKA-UPSTREAM.md](docs/reports/README-VRKA-UPSTREAM.md).
 > Desktop VRKA: https://github.com/MaverickRox/VRKA
 
 ## Modification notice (GPL-3.0 §5a)
 
 This is a **modified version** of VRKA Android, changed by midroid5G on 2026-10-09.
-See [MODIFICATIONS.md](MODIFICATIONS.md) for the full list. In short:
+See [MODIFICATIONS.md](docs/reports/MODIFICATIONS.md) for the full list. In short:
 
 - App name `Mi5G Dl`, applicationId `com.midroid.mi5gdl` (installs alongside VRKA; Kotlin package `com.mvrk.vrka` left unchanged).
 - New launcher/notification icon ("5G" + download arrow, dark purple). Purple accent + AMOLED black theme kept.

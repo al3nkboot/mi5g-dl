@@ -221,7 +221,7 @@ object UpdateRules {
         if (expectedVersionCode != null && candidate.versionCode != expectedVersionCode) return "APK versionCode does not match update.json."
         if (candidate.versionCode <= installed.versionCode) return "APK is not newer than the installed version."
         if (!sameSigners(installed.signerSha256, candidate.signerSha256)) {
-            return "Signing certificate does not match the installed app. Update refused."
+            return "شهادة توقيع التحديث لا تطابق التطبيق المثبّت، تم رفض التثبيت. / Signing certificate does not match the installed app. Update refused."
         }
         return null
     }

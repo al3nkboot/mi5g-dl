@@ -106,7 +106,7 @@ class UpdateRulesTest {
     @Test fun verifyAcceptsMatchingApk() = assertNull(UpdateRules.verifyApk(candidate(), installed, 1000, sha, 2))
 
     @Test fun verifyRejections() {
-        assertTrue(UpdateRules.verifyApk(candidate(signers = setOf("deadbeef")), installed, 1000, sha, 2)!!.contains("Signing certificate"))
+        assertTrue(UpdateRules.verifyApk(candidate(signers = setOf("deadbeef")), installed, 1000, sha, 2)!!.contains("شهادة توقيع التحديث لا تطابق"))
         assertNotNull(UpdateRules.verifyApk(candidate(signers = emptySet()), installed, 1000, sha, 2))
         assertNotNull(UpdateRules.verifyApk(candidate(signers = setOf("57bc19907eea", "other")), installed, 1000, sha, 2))
         assertNotNull(UpdateRules.verifyApk(candidate(pkg = "com.mvrk.vrka"), installed, 1000, sha, 2))
