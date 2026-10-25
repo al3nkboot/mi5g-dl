@@ -83,7 +83,7 @@ The release signing keystore is kept **outside** this repository and must never 
 
 ## 💙 Support Development / دعم استمرارية تطوير التطبيق
 
-If you find **Mi5G Dl** useful, you can support the developer **Ahmed ALASAD (`@midroid5G`)**:
+If you find **Mi5G Dl** useful, you can support the developer **`@midroid5G`**:
 إذا أعجبك التطبيق واستفدت منه، يمكنك دعم المطور للمساهمة في استمرار تطوير التطبيق وتحديثه مجاناً وبدون إعلانات:
 
 - **PayPal:** [**paypal.me/Midroid5G**](https://paypal.me/Midroid5G) (`@Midroid5G`)
