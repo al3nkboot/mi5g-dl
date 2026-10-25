@@ -3,6 +3,11 @@
   <h1>Mi5G Dl</h1>
   <p><strong>Personal Android media downloader build for <a href="https://x.com/midroid5G">@midroid5G</a>.</strong></p>
   <p><strong>Based on <a href="https://github.com/MaverickRox/VRKA-Android">VRKA by MVRK (MaverickRox)</a>, GPL-3.0.</strong></p>
+  <p>
+    <a href="https://github.com/al3nkboot/mi5g-dl/releases/latest"><img src="https://img.shields.io/github/v/release/al3nkboot/mi5g-dl?label=Release&color=7C4DFF" alt="Latest Release" /></a>
+    <a href="https://paypal.me/Midroid5G"><img src="https://img.shields.io/badge/PayPal-Midroid5G-00457C?logo=paypal&logoColor=white" alt="PayPal Support" /></a>
+    <a href="https://x.com/midroid5G"><img src="https://img.shields.io/badge/X-%40midroid5G-000000?logo=x&logoColor=white" alt="X @midroid5G" /></a>
+  </p>
 </div>
 
 ---
@@ -75,6 +80,14 @@ VRKA_SIGNING_PROPERTIES=/path/to/signing.properties ./gradlew --no-daemon assemb
 ```
 
 The release signing keystore is kept **outside** this repository and must never be committed.
+
+## 💙 Support Development / دعم استمرارية تطوير التطبيق
+
+If you find **Mi5G Dl** useful, you can support the developer **Ahmed ALASAD (`@midroid5G`)**:
+إذا أعجبك التطبيق واستفدت منه، يمكنك دعم المطور للمساهمة في استمرار تطوير التطبيق وتحديثه مجاناً وبدون إعلانات:
+
+- **PayPal:** [**paypal.me/Midroid5G**](https://paypal.me/Midroid5G) (`@Midroid5G`)
+- **X (Twitter):** [**@midroid5G**](https://x.com/midroid5G)
 
 ## License
 

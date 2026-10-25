@@ -989,8 +989,25 @@ internal fun SettingsScreen(
                         text = "Personal build for @midroid5G",
                         style = MaterialTheme.typography.bodyMedium.copy(
                             fontFamily = VrkaMonoFamily,
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
                         ),
-                        color = VrkaTokens.TextSecondary,
+                        color = VrkaTokens.AccentLight,
+                        modifier = Modifier.clickable {
+                            runCatching { uriHandler.openUri("https://x.com/midroid5G") }
+                        },
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "💙 Support on PayPal: paypal.me/Midroid5G",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            fontFamily = VrkaMonoFamily,
+                            fontWeight = FontWeight.SemiBold,
+                            textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline,
+                        ),
+                        color = VrkaTokens.Accent,
+                        modifier = Modifier.clickable {
+                            runCatching { uriHandler.openUri("https://paypal.me/Midroid5G") }
+                        },
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -1039,6 +1056,19 @@ internal fun SettingsScreen(
             VrkaDivider()
             Spacer(modifier = Modifier.height(4.dp))
 
+            VrkaSettingRow(
+                title = "Support developer on PayPal",
+                subtitle = "paypal.me/Midroid5G (@Midroid5G) · دعم استمرارية تطوير التطبيق",
+                isSubtitleMono = true,
+            ) {
+                VrkaOutlinedButton(
+                    text = "PayPal",
+                    onClick = { runCatching { uriHandler.openUri("https://paypal.me/Midroid5G") } },
+                    height = 32.dp,
+                    borderColor = VrkaTokens.Accent,
+                )
+            }
+            VrkaDivider()
             // Mi5G Dl: the upstream VRKA GitHub self-updater stays disabled. Mi5G Dl updates only
             // from the user's own repository (see "Mi5G Dl App Updates" above).
             VrkaSettingRow(
