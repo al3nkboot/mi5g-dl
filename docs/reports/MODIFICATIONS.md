@@ -1,8 +1,20 @@
+# Mi5G Dl modifications
+
+## 1.3.0 (versionCode 7, 2026-11-24)
+
+Merged upstream VRKA Android 5.1.5 (`0d721d0`). Kept the Mi5G identity: applicationId `com.midroid.mi5gdl`, branding, PayPal (`https://paypal.me/Midroid5G`) and VRKA/GPL-3.0 credit in About, handle `@midroid5G` only, disabled VRKA self-update, Mi5G GitHub-releases updater, optional YouTube sign-in and bot-check recovery, Drive-file sync, and precise trim.
+
+Took upstream Room storage, 14-language i18n (including Arabic RTL), playlist child jobs, share sheet, and GeckoView 159.
+
+**Queue/history migration:** on first launch, the 1.2.x `download_jobs.json` file is imported into Room by upstream `LegacyStorageMigrator`. Fork-only fields (`trimPrecise`, `playlistGroup`/`playlistFolder`, `syncedFrom`) are preserved through JobStore decode and JobJsonCodec. The original JSON file is kept as a migration backup. Jobs that cannot be decoded are quarantined rather than dropped, matching upstream policy.
+
+---
+
 # Mi5G Dl — modifications to VRKA Android
 
 Upstream: VRKA Android by MVRK (MaverickRox), https://github.com/MaverickRox/VRKA-Android, GPL-3.0
 Base: v5.0.2, commit 06524a676c8d1045fcc50e45a9bce8bfe737fa58 (2026-10-05)
-Modified by: midroid5G, 2026-10-09. All modifications are released under GPL-3.0.
+Modified by: @midroid5G, 2026-10-09. All modifications are released under GPL-3.0.
 
 | Area | Change |
 |---|---|

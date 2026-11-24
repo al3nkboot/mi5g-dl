@@ -5,8 +5,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <!-- Mi5G Dl 1.1.0: self-update from the user's own GitHub releases (signature-verified). -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
@@ -15,6 +15,7 @@
         android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
+        android:localeConfig="@xml/locales_config"
         android:roundIcon="@mipmap/ic_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.VRKA"
@@ -40,6 +41,7 @@
             </intent-filter>
         </activity>
 
+
         <!-- Mi5G Dl: optional YouTube sign-in (private GeckoView session; exports youtube/google cookies to app-private storage) -->
         <activity
             android:name=".mi5g.youtube.YouTubeSignInActivity"
@@ -49,23 +51,30 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:windowSoftInputMode="adjustResize" />
 
-        <!-- Mi5G Dl: share-to-download bottom sheet -->
+        <!-- Dedicated transparent share target: its own task keeps the source app visible. -->
         <activity
-            android:name=".mi5g.share.ShareActivity"
-            android:exported="true"
+            android:name=".ShareReceiverActivity"
             android:excludeFromRecents="true"
-            android:taskAffinity=""
-            android:launchMode="standard"
+            android:exported="true"
+            android:launchMode="singleInstance"
             android:label="@string/share_label"
-            android:theme="@style/Theme.Mi5G.Share"
-            android:windowSoftInputMode="adjustResize">
+            android:theme="@style/Theme.VRKA.TranslucentShare">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-            <!-- Optional "open with" for common media hosts. Not auto-verified: enable it under
-                 App info → Open by default → Add links if you want these links to open here. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="http" />
+                <data android:scheme="https" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <!-- Optional "open with" for common media hosts. Not auto-verified. -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -92,6 +101,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false" />
+
+        <service
+            android:name=".DownloadTransferJobService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
 
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"

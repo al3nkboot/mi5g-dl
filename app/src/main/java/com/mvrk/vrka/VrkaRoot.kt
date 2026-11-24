@@ -1,5 +1,8 @@
 package com.mvrk.vrka
 
+import androidx.compose.ui.res.stringResource
+import java.util.UUID
+
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -61,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.compose.collectAsLazyPagingItems
 import com.mvrk.vrka.ui.AppUpdateDialog
 import com.mvrk.vrka.update.AppUpdateCheckState
 import com.mvrk.vrka.update.AppReleaseInfo
@@ -71,18 +75,25 @@ import kotlinx.coroutines.launch
 fun VrkaRoot(
     manager: VrkaDownloadManager,
     openQueueRequests: StateFlow<Long>,
-    sharedUrl: StateFlow<String?> = remember { kotlinx.coroutines.flow.MutableStateFlow(null) },
-    openSettingsRequests: StateFlow<Long> = remember { kotlinx.coroutines.flow.MutableStateFlow(0L) },
+    openSettingsRequests: StateFlow<Long> = kotlinx.coroutines.flow.MutableStateFlow(0L),
 ) {
-    val openSettingsToken by openSettingsRequests.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val openSettingsToken by openSettingsRequests.collectAsStateWithLifecycle()
     val jobs by manager.jobs.collectAsStateWithLifecycle()
+    val storageStatus by manager.storageStatus.collectAsStateWithLifecycle()
+    val historyPager = remember(manager) { manager.historyPager() }
+    val historyFlow = remember(historyPager) { historyPager?.flow }
+    val pagedHistory = if (historyFlow != null) historyFlow.collectAsLazyPagingItems() else null
+    val historyCount = remember(jobs) { jobs.count { it.state.isTerminal } }
+    var historyTotal by remember { mutableStateOf(historyCount) }
+    LaunchedEffect(pagedHistory?.itemCount, jobs) {
+        historyTotal = if (pagedHistory != null) manager.terminalJobCount() else historyCount
+    }
     val openQueueToken by openQueueRequests.collectAsStateWithLifecycle()
-    val incomingUrl by sharedUrl.collectAsStateWithLifecycle()
-    var sharedUrlForHome by remember { mutableStateOf<String?>(null) }
     val settings by manager.settingsRepository.settings.collectAsStateWithLifecycle()
     val runtime by manager.runtime.collectAsStateWithLifecycle()
     val diagnostics by manager.diagnostics.collectAsStateWithLifecycle()
+    val deadLetterCleanupTasks by manager.deadLetterCleanupTasks.collectAsStateWithLifecycle()
     val appUpdateCheckState by manager.appUpdateManager.checkState.collectAsStateWithLifecycle()
     val appUpdateDownloadState by manager.appUpdateManager.downloadState.collectAsStateWithLifecycle()
     val startupUpdateDialogData by manager.componentUpdateManager.startupUpdateDialogData.collectAsStateWithLifecycle()
@@ -92,9 +103,24 @@ fun VrkaRoot(
         pageCount = { destinations.size },
     )
     val destination = destinations[pagerState.currentPage]
-    var pendingRequest by remember { mutableStateOf<DownloadRequest?>(null) }
+    var pendingDownload by remember { mutableStateOf<PendingDownload?>(null) }
     var pendingAppUpdate by remember { mutableStateOf<AppReleaseInfo?>(null) }
     val snackbar = remember { SnackbarHostState() }
+    LaunchedEffect(storageStatus) {
+        when (storageStatus.readiness.name) {
+            "INITIALIZING", "MIGRATING" -> snackbar.showSnackbar("Preparing local storage")
+            "MIGRATION_FAILED", "STORAGE_FAILED" -> snackbar.showSnackbar(
+                storageStatus.message.ifBlank { "Local storage is unavailable" },
+            )
+            else -> {
+                if (storageStatus.partialReadiness) {
+                    snackbar.showSnackbar(
+                        storageStatus.message.ifBlank { "Some history records require storage recovery" },
+                    )
+                }
+            }
+        }
+    }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -102,40 +128,75 @@ fun VrkaRoot(
         manager.componentUpdateManager.performStartupCheckIfNeeded(settings.updatePreference)
     }
 
-    var playlistUrl by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(incomingUrl) {
-        if (!incomingUrl.isNullOrBlank()) {
-            sharedUrlForHome = incomingUrl
-            if (com.mvrk.vrka.mi5g.playlist.PlaylistRules.looksLikePlaylist(incomingUrl!!)) playlistUrl = incomingUrl
-            pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.DOWNLOAD))
+    suspend fun executeEnqueue(request: DownloadRequest, estimate: SizeEstimate?) {
+        val isPurePlaylist = PlaylistRouting.isPurePlaylistUrl(request.url)
+        val targetReq = when {
+            isPurePlaylist -> request.copy(isPlaylist = true)
+            !request.isPlaylist && PlaylistRouting.isVideoWithPlaylistContext(request.url) ->
+                request.copy(url = PlaylistRouting.stripPlaylistContext(request.url))
+            else -> request
+        }
+        if (targetReq.isPlaylist) {
+            val items = manager.expandPlaylist(targetReq)
+            if (!items.isNullOrEmpty()) {
+                val playlistGroupId = UUID.randomUUID().toString()
+                val batchItems = items.map { item ->
+                    targetReq.copy(
+                        url = item.url,
+                        isPlaylist = false,
+                        playlistItemIndex = item.playlistItemIndex,
+                        playlistItemCount = item.playlistItemCount,
+                        playlistItemId = item.playlistItemId,
+                        playlistGroupId = playlistGroupId,
+                    ) to item.estimate
+                }
+                when (val result = manager.enqueueBatch(batchItems, playlistGroupId)) {
+                    is BatchEnqueueResult.Rejected -> snackbar.showSnackbar(result.message)
+                    is BatchEnqueueResult.Accepted -> {}
+                }
+                return
+            } else {
+                snackbar.showSnackbar("Unable to load playlist items. Please check network connection.")
+                return
+            }
+        }
+        val result = manager.enqueue(targetReq, estimate)
+        if (result is EnqueueResult.Rejected) {
+            snackbar.showSnackbar(result.message)
         }
     }
 
     val notificationPermission = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) {
-        pendingRequest?.let(manager::enqueue)
-        pendingRequest = null
+        pendingDownload?.let {
+            scope.launch { executeEnqueue(it.request, it.estimate) }
+        }
+        pendingDownload = null
         pendingAppUpdate?.let(manager.appUpdateManager::downloadAndInstall)
         pendingAppUpdate = null
     }
 
-    fun enqueue(request: DownloadRequest) {
+    fun enqueue(request: DownloadRequest, estimate: SizeEstimate?) {
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.POST_NOTIFICATIONS,
             ) != PackageManager.PERMISSION_GRANTED
         if (needsPermission) {
-            pendingRequest = request
+            pendingDownload = PendingDownload(request, estimate)
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         } else {
-            manager.enqueue(request)
+            scope.launch {
+                executeEnqueue(request, estimate)
+            }
         }
         scope.launch {
             pagerState.animateScrollToPage(destinations.indexOf(VrkaDestination.QUEUE))
         }
     }
+
+    val enqueueFailedMessage = stringResource(R.string.snackbar_enqueue_failed)
 
     fun downloadAppUpdate(release: AppReleaseInfo) {
         val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -188,9 +249,9 @@ fun VrkaRoot(
                     val historyJobs = remember(jobs) { jobs.filter { it.state.isTerminal } }
 
                     val handleEnqueue = remember(scope, snackbar) {
-                        { request: DownloadRequest ->
-                            runCatching { enqueue(request) }.onFailure { error ->
-                                pendingRequest = null
+                        { request: DownloadRequest, estimate: SizeEstimate? ->
+                            runCatching { enqueue(request, estimate) }.onFailure { error ->
+                                pendingDownload = null
                                 val message = error.message ?: "Could not add download"
                                 scope.launch { snackbar.showSnackbar(message) }
                             }
@@ -234,20 +295,6 @@ fun VrkaRoot(
                         }
                     }
 
-                    playlistUrl?.let { pUrl ->
-                        com.mvrk.vrka.mi5g.playlist.PlaylistDialog(
-                            url = pUrl,
-                            settings = settings,
-                            jobs = jobs,
-                            onProbe = manager::probePlaylist,
-                            onEnqueue = { request ->
-                                runCatching { manager.enqueue(request) }.onFailure { e -> scope.launch { snackbar.showSnackbar(e.message ?: "Could not add download") } }
-                            },
-                            onRetry = { manager.retry(it) },
-                            onDismiss = { playlistUrl = null },
-                        )
-                    }
-
                     // Responsive swipeable pager: synchronized with bottom nav and indicator puck
                     HorizontalPager(
                         state = pagerState,
@@ -263,14 +310,12 @@ fun VrkaRoot(
                                     settings = settings,
                                     repository = manager.settingsRepository,
                                     runtime = runtime,
-                                    initialUrl = sharedUrlForHome,
-                                    onInitialUrlConsumed = { sharedUrlForHome = null },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
                                     onEnqueue = handleEnqueue,
-                                    onProbeMedia = manager::probeMedia,
-                                    onOpenPlaylist = { playlistUrl = it },
+                                    onEstimateSize = { request, force -> manager.estimateSize(request, force) },
+                                    onLoadMetadata = { request -> manager.metadata(request) },
                                     onUpdateDownloadLocation = { uri, mode, configured ->
                                         scope.launch {
                                             manager.settingsRepository.setDownloadLocation(uri, mode, configured)
@@ -281,7 +326,7 @@ fun VrkaRoot(
                             VrkaDestination.QUEUE -> {
                                 JobsScreen(
                                     jobs = activeJobs,
-                                    emptyMessage = "Your active queue is empty.",
+                                    emptyMessage = stringResource(R.string.queue_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -296,21 +341,63 @@ fun VrkaRoot(
                             }
                             VrkaDestination.HISTORY -> {
                                 JobsScreen(
-                                    jobs = historyJobs,
-                                    emptyMessage = "Completed and failed downloads appear here.",
+                                    jobs = if (pagedHistory == null) historyJobs else emptyList(),
+                                    emptyMessage = stringResource(R.string.history_empty_message),
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
+                                    pagedJobs = pagedHistory,
+                                    totalJobCount = historyTotal,
+                                    onLoadAllIds = { manager.allTerminalJobIds() },
                                     onCancel = manager::cancel,
                                     onRetry = manager::retry,
                                     onOpen = manager::openOutput,
                                     onShare = manager::shareOutput,
                                     onDelete = manager::deleteJob,
-                                    onDeleteRecord = manager::deleteHistoryRecord,
-                                    onDeleteWithFile = { scope.launch { manager.deleteJobWithFiles(it) } },
-                                    onDeleteRecords = manager::deleteHistoryRecords,
-                                    onDeleteJobsWithFiles = { scope.launch { manager.deleteJobsWithFiles(it) } },
-                                    onClearAll = { deleteFiles -> scope.launch { manager.clearAllHistory(deleteFiles) } },
+                                    onDeleteRecord = { id ->
+                                        scope.launch {
+                                            val result = manager.deleteHistoryRecordWithResult(id)
+                                            if (result.deletedRecordsCount == 0) {
+                                                snackbar.showSnackbar("History record retained for storage recovery")
+                                            }
+                                        }
+                                    },
+                                    onDeleteWithFile = { id ->
+                                        scope.launch {
+                                            val result = manager.deleteJobWithFiles(id)
+                                            if (result.failedFilesCount > 0 || result.deletedRecordsCount == 0) {
+                                                snackbar.showSnackbar("Could not delete file; History record retained for recovery")
+                                            }
+                                        }
+                                    },
+                                    onDeleteRecords = { ids ->
+                                        scope.launch {
+                                            val result = manager.deleteHistoryRecordsWithResult(ids)
+                                            if (result.deletedRecordsCount < ids.size) {
+                                                snackbar.showSnackbar("Some History records were retained for storage recovery")
+                                            }
+                                        }
+                                    },
+                                    onDeleteJobsWithFiles = { ids ->
+                                        scope.launch {
+                                            val result = manager.deleteJobsWithFiles(ids)
+                                            if (result.failedFilesCount > 0 || result.deletedRecordsCount < ids.size) {
+                                                snackbar.showSnackbar("Some files or records could not be deleted and were retained for recovery")
+                                            }
+                                        }
+                                    },
+                                    onClearAll = { deleteFiles ->
+                                        scope.launch {
+                                            val result = manager.clearAllHistory(deleteFiles)
+                                            if (result.failedFilesCount > 0) {
+                                                snackbar.showSnackbar(
+                                                    "Deleted ${result.deletedRecordsCount} record(s); ${result.failedFilesCount} file(s) retained for recovery",
+                                                )
+                                            } else if (result.deletedRecordsCount == 0 && historyTotal > 0) {
+                                                snackbar.showSnackbar("History records retained for pending storage recovery")
+                                            }
+                                        }
+                                    },
                                     onClear = manager::clearFinished,
                                 )
                             }
@@ -320,8 +407,17 @@ fun VrkaRoot(
                                     runtime = runtime,
                                     repository = manager.settingsRepository,
                                     onUpdateRuntime = manager::updateRuntime,
+                                    runtimeManager = manager.ytDlpRuntimeManager,
                                     diagnostics = diagnostics,
                                     onClearDiagnostics = manager::clearDiagnostics,
+                                    deadLetterCleanupTasks = deadLetterCleanupTasks,
+                                    onRetryCleanupTask = { taskId ->
+                                        scope.launch {
+                                            if (!manager.retryDeadLetterCleanup(taskId)) {
+                                                snackbar.showSnackbar("The cleanup retry could not be started")
+                                            }
+                                        }
+                                    },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .statusBarsPadding(),
@@ -373,7 +469,7 @@ fun VrkaRoot(
 
                     VrkaFloatingNavBar(
                         selectedDestination = destination,
-                        pagerPosition = pagerState.currentPage + pagerState.currentPageOffsetFraction,
+                        pagerState = pagerState,
                         onDestinationSelected = { dest ->
                             scope.launch {
                                 pagerState.animateScrollToPage(destinations.indexOf(dest))
@@ -415,6 +511,7 @@ fun VrkaRoot(
                         onDismiss = manager.componentUpdateManager::dismissStartupDialog,
                     )
                 }
+
             }
         }
     }
@@ -474,7 +571,7 @@ private fun FallbackInteractionOverlay(
                                 color = VrkaWarning.copy(alpha = 0.2f),
                             ) {
                                 Text(
-                                    "BROWSER FALLBACK",
+                                    stringResource(R.string.fallback_badge),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     color = VrkaWarning,
@@ -507,7 +604,7 @@ private fun FallbackInteractionOverlay(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 modifier = Modifier.height(34.dp),
                             ) {
-                                Text("Minimize", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.fallback_minimize), style = MaterialTheme.typography.labelMedium)
                             }
                             Button(
                                 onClick = onCancel,
@@ -519,15 +616,13 @@ private fun FallbackInteractionOverlay(
                                 shape = androidx.compose.foundation.shape.RoundedCornerShape(10.dp),
                                 modifier = Modifier.height(34.dp),
                             ) {
-                                Text("Cancel", style = MaterialTheme.typography.labelMedium)
+                                Text(stringResource(R.string.fallback_cancel), style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }
 
-                    val pageStatus by fallbackState.engine.pageStatus.collectAsStateWithLifecycle()
                     val statusMessage = when {
                         candidateCount > 0 -> "Capturing media ($candidateCount stream(s) observed)"
-                        pageStatus != null -> pageStatus!!
                         else -> "Select server / Press Play to initiate media stream"
                     }
                     Text(
@@ -566,7 +661,7 @@ private fun FallbackInteractionOverlay(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "Initializing fallback browser session...",
+                            stringResource(R.string.fallback_initializing),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

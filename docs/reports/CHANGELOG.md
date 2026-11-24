@@ -1,117 +1,119 @@
 # Changelog
 
-All notable changes to VRKA Android are documented here. Release entries describe the production source for the corresponding release.
+Notable changes for **VRKA Android** (`com.mvrk.vrka`). For full checksums, OpenPGP manifests, and test logs, see [RELEASE_EVIDENCE.md](RELEASE_EVIDENCE.md).
+
+## [5.1.5] - 2026-11-13
+
+Production release adding playlist child-job expansion, composite playlist selection dialogs, hardened MediaStore publication and recovery, in-app updater compatibility for current versions, Download page PNG wordmark branding, Android 16 download notifications, and queue and deletion reliability fixes (`versionCode 50105`, `com.mvrk.vrka`).
+
+### Highlights
+- **Playlist downloads:** Playlists are now expanded into individual download jobs, allowing multiple videos to download concurrently with separate progress and History entries.
+- **Playlist selection:** When a YouTube link contains both a video and playlist, choose whether to download the entire playlist or just that video.
+- **More reliable file saving:** Improved MediaStore publishing and recovery to prevent completed downloads from being lost when a storage operation fails.
+- **Updater improvements:** Fixed update checks when the installed version is already current or newer, while retaining downgrade protection.
+- **Android 16 download notifications:** Improved background download handling and notification separation for concurrent downloads.
+- **Updated Download branding:** Replaced the Download page's text logo with the new transparent purple VRKA wordmark, compatible with light and dark themes.
+
+### Reliability and security
+- Fixed queue completion and cleanup issues affecting subsequent downloads and History deletion.
+- Added cryptographic verification of uBlock Origin extension packages before installation.
+- Improved media detector credential handling and redirect restrictions.
+- Refined R8/ProGuard rules while retaining required serialization, database and background-work functionality.
+
+## [5.1.4] - 2026-11-11
+
+Security hardening, safer custom `yt-dlp` handling, stricter updates, and cleaner docs (`versionCode 50104`, direct upgrade from `v5.1.3`/`v5.1.2`).
+
+- **Safer custom `yt-dlp` forks:** Requires confirming a SHA-256 untrusted-binary warning on install and re-verifies custom binaries on disk before running, falling back to stock if altered; reinstalling a verified tag repairs corrupted local files.
+- **Locked-down commands & privacy:** Enforces shared `CustomCommandPolicy` blocking for shell hooks, path/proxy overrides, and credential headers (`Cookie`, `Authorization`), disables Android backups (`allowBackup=false`), redacts URL tokens/paths in failure logs, and adds one-tap private Browser Fallback session clearing.
+- **Stricter in-app updates:** Caps updater HTTPS redirects at `5` hops across approved GitHub hosts and checks target `versionCode` through background staging and install.
+- **Verified builds & cleaner docs:** Locks Gradle dependencies offline (`--dependency-verification=strict`), SHA-pins GitHub Actions, tracks bundled native asset hashes (`docs/native-binaries.json`), keeps a single `main` branch, and replaces old docs/framed images with guides under [docs/README.md](docs/README.md).
+- **Tested:** `850` unit tests (`80` suites), `0` lint errors, API 36 CI provider tests, APK v2 + OpenPGP verification, and API 36 emulator `v5.1.3` -> `v5.1.4` upgrades.
+
+## [5.1.3] - 2026-11-10
+
+Major storage reliability upgrade moving queue, history, migration, and file-publication tracking into a single Room/SQLite database (`VrkaDatabase`, Room `2.8.5`), compatible with direct in-place upgrades from `v5.1.2`. See [docs/STORAGE_ARCHITECTURE.md](docs/STORAGE_ARCHITECTURE.md).
+
+- **Atomic Room storage:** Unified queue, paged History (`30` rows/page), retries, publication batches, and cleanup tasks under startup readiness gating (`StorageRuntime`).
+- **Ownership-checked crash recovery:** Retry attempts and batch outputs use unique IDs so stale callbacks cannot overwrite current transfers, and ambiguous legacy records are quarantined rather than dropped.
+- **Auto-migration with safety snapshots:** Imports `v5.1.0`–`v5.1.2` JSON stores with hashed ledgers, WAL integrity checks, raw backup snapshots, and an 80-case test corpus.
+- **Verified MediaStore & SAF publishing:** Checks output size and SHA-256 readback before marking jobs `DONE` and retains staging/provider cleanup tasks until ownership is confirmed.
+- **OpenPGP & signing isolation:** Restricts updater signatures to RSA keys + `SHA-256`/`SHA-384`/`SHA-512` with matching hashed issuer fingerprints; isolates production signing keys from debug/CI tasks.
+- **Verification:** `828` JVM tests (`78` suites), `0` lint errors, and `12` API 36 provider instrumentation tests (`10` SAF + `2` MediaStore).
+
+## [5.1.2] - 2026-11-09
+
+> [!IMPORTANT]
+> **Upgrading from v5.0.2:** Install [`VRKA-Android-v5.1.2.apk`](https://github.com/MaverickRox/VRKA-Android/releases/tag/v5.1.2) manually over v5.0.2 without uninstalling first, then update normally.
+
+- **Crash-safe file publishing (`PublicationJournal`):** Records transaction intents upfront using deterministic pending filenames (`.vrka_pending_${transactionId}_${filename}`) so interrupted MediaStore/SAF transfers can recover outputs cleanly or clean up orphans on restart.
+- **Atomic playlist batching:** Interrupted multi-file playlists fail closed (`FAILED`, preserving completed URIs in History) instead of falsely reporting `DONE`.
+- **Persistence ordering & corrupt journal protection:** Commits `JobStore` state before retiring journal entries or staging files, preserves damaged journals in bounded snapshots (`max 3`), handles providers lacking `renameDocument`, and fails closed on legacy journal-less in-flight jobs.
+- **Verification:** `747` JVM tests (`73` suites), `0` lint errors, APK v2 RSA-4096 signed.
+
+## [5.1.1] - 2026-11-08
+
+- **Accurate resolution & size estimates:** Unified `-f` selector + 60 FPS sort between preflight sizing and transfers, cleared stale Browser Fallback page estimates before sizing candidates, summed video/audio streams once, and marked post-processed files (merge, trim, H.264, subtitles) as approximate.
+- **Honest progress & history sizing:** Added `before_dl` actual resolution tracking, mixed-playlist resolution ranges, and aggregate media output sizes in History (excluding subtitle sidecars).
+- **Storage & SAF fixes:** Preserves corrupt Queue/History files instead of resetting to empty (`JobStore` v2) and requires a valid SAF folder upfront on Android 8–9.
+- **Privacy & accessibility:** Redacts URL credentials in diagnostics (keeping original URLs only on failure with opt-in export warning), enforces strict ISO-8601 updater timestamps, preserves Comet glow and Liquid navbar, and exposes determinate progress to screen readers across all 14 languages.
+- **Verification:** `732` JVM tests (`72` suites), `0` lint errors, and ADB physical-device validation on OnePlus 11 (Android 16 / SDK 36).
+
+## [5.1.0] - 2026-10-31
+
+> [!IMPORTANT]
+> **Upgrading from v5.0.2:** Requires a one-time manual APK install (install v5.1.2 or newer over v5.0.2 without uninstalling) because the v5.0.2 updater rejects `.download.tmp` staging filenames.
+
+- **14 languages + full Arabic RTL:** Localized UI (Arabic, Bengali, Simplified Chinese, English, French, German, Gujarati, Hindi, Kannada, Portuguese BR/PT, Spanish, Tamil, Telugu) plus System Default.
+- **Preflight sizing & AMOLED progress UI:** Added pre-download size estimates on Download and Share Sheet cards, directional luminous wake progress bar, GeckoView `159.0.20261022150525`, and custom `yt-dlp` runtime selection.
+- **OpenPGP self-updater:** Authenticates release manifests against pinned RSA-4096 trust anchor `0xD519380BEBA1B9F7` with expiration, monotonic anti-rollback, strict hash algorithms (`SHA-256`+), and fixed `.download.tmp` staging checks.
 
 ## [5.0.2] - 2026-10-05
 
-### Fixed and Improved
-- Fixed in-app application update detection and APK selection.
-- Improved background application updates with persistent WorkManager downloads.
-- Added retry handling for temporary network failures and connection interruptions.
-- Improved APK staging, verification, and update-ready notification handling.
-- Improved update installation and recovery behavior.
+- Fixed in-app release detection and APK asset selection, and moved background update downloads and network retries to `WorkManager` with improved staging verification.
 
 ## [5.0.1] - 2026-10-05
 
-### Fixed
-- Restored application update detection for stable releases by requiring canonical three-part tags (`v5.0.1`) and the exact matching APK asset (`VRKA-Android-v5.0.1.apk`). The 4.5.3 updater parsed `v5.0` as `5.0.0`, but rejected the two-part APK filename and incorrectly treated the missing asset as “up to date.”
-- Invalid, draft, prerelease, duplicate, malformed, or mismatched release metadata now fails closed instead of being reported as “up to date”; automatic checks remain quiet while manual checks show the error.
-- Update downloads now validate every HTTPS redirect hop, enforce the approved GitHub host/port policy and hop limit, and accept only the exact APK asset for the declared version.
-- Before opening Android’s installer, the app now verifies the private update-cache location, APK package identity, canonical filename/version name, strictly increasing version code, and matching installed signing certificate. Missing or mismatched verification metadata is rejected.
-
-### Tests
-- Added updater regression coverage for 5.0.1 and 4.5.3 version ordering, release and asset validation, automatic/manual check behavior, malformed metadata, download URL/redirect policy, downgrade rejection, and APK install metadata and signer checks.
+- Enforced strict canonical version tags, fail-closed updater errors, HTTPS host/redirect validation, and pre-install package ID, version-code downgrade, and signing-certificate checks (backed by updater security tests).
 
 ## [5.0] - 2026-10-04
 
-### User interface and navigation
-- Delivered the Golden 5.0 interface with the Liquid Glass navigation bar, shared backdrop treatment, and swipeable pager navigation across the main sections.
-- Refined the four-slot navigation indicator geometry and Settings controls, including component status and update presentation.
-- Added Android share-sheet URL intake and sharing of completed output files.
-
-### Downloads and queue
-- Added an optional, persisted concurrency scheduler with a configurable limit of two to four simultaneous jobs; sequential processing remains the default.
-- Kept normal acquisition on yt-dlp and added task/job persistence (`JobStore`) so queued and active work can be restored after process recreation.
-- Added actual media resolution tracking, format and quality selection, video/audio extraction options, subtitle language/download/embed controls, and clearer queue/history management.
-- Added validated output publication through `OutputPublisher`, with FFmpeg/ffprobe used for local assembly, conversion, and media checks.
-- Added optional H.264 Compatibility Mode, off by default, which validates local FFmpeg `libx264` availability before converting staged media.
-
-### Browser Fallback and media discovery
-- Added GeckoView Browser Fallback for eligible extraction failures, with the media-detector extension and Gecko bridge discovering candidate media from browser requests and page media elements.
-- Routed a selected candidate back through the standard yt-dlp probe and transfer path. Browser Fallback does not fetch subtitles, and FFmpeg is reserved for local post-processing and validation.
-- Added GeckoView 156.0.20260921121718 and bundled uBlock Origin 1.74.0 for the browser session; removed the retired Puemos updater and active extension surface.
-
-### Settings, components, and security
-- Added named custom yt-dlp argument templates with validated parameters and restrictions against shell execution, output/path overrides, and unsafe credential handling.
-- Added dynamic installed yt-dlp version detection from the active runtime/zipapp or bundled raw resource, component update presentation, and hardened persistent component update operations.
-- Hardened custom headers, browser-session handoff, diagnostics redaction, and component update operations with bounded reads, six-second socket timeouts, an eight-second deadline, cooperative cancellation, and single-flight checks.
-- Refined component status rows and monospace badges while retaining the Stable/Nightly channel selector.
-- Bound Browser Fallback transfers to the public page source, validated captured headers by origin, and dropped custom template state before the yt-dlp handoff.
-
-### Runtime and compatibility
-- Updated the bundled yt-dlp runtime to 2026.08.19 and added Android compatibility fixes for its runtime and packaged execution path.
-- Preserved persisted JobStore data, download history, destination permissions, and system installer integration.
-- Kept support scoped to the shipped `arm64-v8a` package, Android API 26 minimum, and API 36 target.
+- **Liquid Glass UI & workflows:** Introduced swipeable 4-tab UI, Android Share Sheet intake, multi-select History management, and optional bounded concurrent downloads (2–4 jobs; sequential default).
+- **Engine & processing:** Added persisted `JobStore`, real resolution tracking, `OutputPublisher`, subtitle selection/embedding, custom shell-free `yt-dlp` templates (`yt-dlp` `2026.08.19`), and optional `FFmpeg` `libx264` H.264 Compatibility Mode (`arm64-v8a`, Android API `26`–`36`).
+- **Browser Fallback:** Switched to GeckoView `156.0.20260921121718` with bundled `uBlock Origin` `1.74.0` and a private stream-discovery bridge, hardened origin header isolation, diagnostics redaction, and bounded WorkManager component updates.
 
 ## [4.5.3] - 2026-09-14
 
-### Changed
-- Updated bundled yt-dlp to 2026.08.19.
-- Updated bundled uBlock Origin to 1.74.0 (gorhill/uBlock official signed WebExtension).
-- Updated bundled Puemos to 5.5.0 (puemos/hls-downloader official WebExtension ID `{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}`).
-- Improved component update handling with authoritative batch state machine.
-- Prevented duplicate update operations from repeated button presses (single-flight batchMutex guard).
-- Added persistent background update operations via Android WorkManager (`ComponentUpdateWorker`, `AppUpdateDownloadWorker`) for process-death survival.
-- Added 24-hour startup update check gate with non-blocking Combined Dialog.
-- Added persistent app updater background download handling.
-- Improved runtime verification of installed WebExtensions by querying the live GeckoView WebExtensionController.
-- Updated documentation and release information to reflect verified components.
+- Updated `yt-dlp` (`2026.08.19`), `uBlock Origin` (`1.74.0`), and `Puemos` (`5.5.0`); moved app/component updaters to persistent `WorkManager` workers with single-flight guards and 24-hour startup update gating.
 
 ## [4.5.2] - 2026-09-09
 
-### Fixed
-- Fixed BouncyCastle provider registration for yt-dlp signature verification.
-- Added R8 / Proguard rules for crypto provider compatibility.
+- Fixed BouncyCastle registration and added R8 rules for `yt-dlp` signature verification.
 
 ## [4.5.1] - 2026-09-09
 
-### Added
-- Added in-app GitHub release update checker and dialog.
-- Enforced APK naming convention and strict redirect validation during download.
-- Improved download location UX and header propagation.
-- Aligned native Opus audio post-processing.
+- Added in-app GitHub release checker, strict APK naming and redirect validation, improved download location UX, and native Opus post-processing.
 
 ## [4.5.0] - 2026-09-09
 
-### Added
-- Added independent in-app component updaters for bundled tools.
-- Added verification matrix and release signing hardening.
+- Added independent component updaters and release signing/verification hardening.
 
 ## [4.0.3] - 2026-09-07
 
-### Security
-- Corrective hardening and security verification across dependencies and session management.
+- Security hardening and dependency/session verification.
 
 ## [4.0.2] - 2026-09-07
 
-### Security
-- Hardened component updater and dependency verification.
-- Strengthened session management and error bounds.
+- Hardened component updater verification, session management, and error bounds.
 
 ## [4.0.1] - 2026-09-06
 
-### Fixed
-- Fixed YouTube quality selector regression.
-- Added Diagnostics UI.
+- Fixed YouTube quality selector regression and added Diagnostics UI.
 
 ## [4.0.0] - 2026-09-05
 
-### Added
-- Added embedded GeckoView browser fallback subsystem.
-- Integrated full uBlock Origin and Puemos stream observation.
-- Added AMOLED-black visual redesign and floating navigation pill.
+- Added embedded GeckoView browser fallback (`uBlock Origin` + `Puemos` discovery), AMOLED-black theme, and floating navigation pill.
 
 ## [1.0.0] - 2026-07-29
 
-### Added
-- Initial baseline release of VRKA Android.
+- Initial VRKA Android release.

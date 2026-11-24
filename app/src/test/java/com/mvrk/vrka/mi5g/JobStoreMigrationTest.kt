@@ -31,8 +31,8 @@ class JobStoreMigrationTest {
     @Test fun roundTripWritesSchemaAndNewFields() {
         val f = File(tmp.root, "jobs.json")
         JobStore(f).save(listOf(job()))
-        val raw = JSONArray(f.readText()).getJSONObject(0)
-        assertEquals(JobStore.SCHEMA_VERSION, raw.getInt("schema"))
+        val root = org.json.JSONObject(f.readText())
+        assertEquals(JobStore.CURRENT_SCHEMA_VERSION, root.getInt("schemaVersion"))
         val back = JobStore(f).load().single()
         assertTrue(back.request.trimPrecise)
         assertEquals("Pixel", back.syncedFrom)
@@ -42,24 +42,19 @@ class JobStoreMigrationTest {
     @Test fun legacyV1RecordIsMigrated() {
         val f = File(tmp.root, "jobs.json")
         JobStore(f).save(listOf(job()))
-        val arr = JSONArray(f.readText())
+        val arr = org.json.JSONObject(f.readText()).getJSONArray("jobs")
         val o = arr.getJSONObject(0)
         o.remove("schema"); o.remove("syncedFrom"); o.optJSONObject("request")?.remove("trimPrecise")
-        f.writeText(arr.toString())
+        f.writeText(arr.toString()) // legacy v1 was a bare array; JobStore still imports it
 
         val back = JobStore(f).load().single()
         assertFalse(back.request.trimPrecise)
         assertEquals("", back.syncedFrom)
         assertEquals("1:00", back.request.trimStart)
         assertEquals(listOf("content://media/1"), back.outputUris)
-        // file rewritten at the new schema
-        assertEquals(JobStore.SCHEMA_VERSION, JSONArray(f.readText()).getJSONObject(0).getInt("schema"))
-    }
-
-    @Test fun migrateIsIdempotent() {
-        val o = org.json.JSONObject().put("request", org.json.JSONObject())
-        JobStore.migrate(o); JobStore.migrate(o)
-        assertEquals(2, o.getInt("schema")); assertEquals(false, o.getJSONObject("request").getBoolean("trimPrecise"))
+        // JobStore.load never rewrites the file; the bare array stays until Room migration/save.
+        val persisted = f.readText().trim()
+        assertTrue(persisted.startsWith("["))
     }
 
     @Test fun syncRecordHasNoFileUrisAndMapsBack() {

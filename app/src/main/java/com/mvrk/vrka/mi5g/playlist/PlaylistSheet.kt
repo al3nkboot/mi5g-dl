@@ -93,7 +93,7 @@ fun PlaylistDialog(
                             DownloadRequest(
                                 url = e.url, mode = mode, quality = quality,
                                 audioFormat = settings.defaultAudioFormat, mp3Bitrate = settings.defaultMp3Bitrate,
-                                playlistGroup = id, playlistFolder = folder,
+                                playlistGroupId = id, playlistFolder = folder,
                             ),
                         )
                     }

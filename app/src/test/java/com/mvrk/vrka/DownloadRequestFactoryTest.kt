@@ -1,14 +1,68 @@
 package com.mvrk.vrka
 
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import java.io.File
 
 class DownloadRequestFactoryTest {
     private val staging = File("build/request-factory-test")
+
+    @Before
+    fun configureCacheDir() {
+        DownloadRequestFactory.initCacheDir(CACHE_DIR)
+    }
+
+    @After
+    fun resetCacheDir() {
+        DownloadRequestFactory.initCacheDir(null)
+    }
+
+    @Test
+    fun pipelineRequestsReuseTheAppPrivateCacheDirectory() {
+        val requests = listOf(
+            DownloadRequestFactory.info(DownloadRequest(url = URL)),
+            DownloadRequestFactory.sizeEstimate(DownloadRequest(url = URL)),
+            built(DownloadRequest(url = URL)),
+        )
+
+        requests.forEach { request ->
+            // ytdl-android only keeps its forced --no-cache-dir when no cache path is supplied.
+            assertEquals(CACHE_DIR, request.getOption("--cache-dir"))
+            assertFalse(request.hasOption("--remote-components"))
+        }
+    }
+
+    @Test
+    fun customTemplatesKeepTheirOwnCachePolicy() {
+        val request = DownloadRequestFactory.customCommand(
+            DownloadJob(
+                id = "custom-job",
+                request = DownloadRequest(
+                    url = URL,
+                    commandTemplateId = "template-1",
+                    commandTemplateName = "Rate limit",
+                    commandTemplateArguments = listOf("--limit-rate", "2M"),
+                ),
+            ),
+            staging,
+        )
+
+        assertNull(request.getOption("--cache-dir"))
+    }
+
+    @Test
+    fun transfersKeepBoundedFragmentConcurrency() {
+        val video = built(DownloadRequest(url = URL, quality = VideoQuality.P1080))
+        val audio = built(DownloadRequest(url = URL, mode = MediaMode.AUDIO, audioFormat = AudioFormat.MP3))
+
+        assertEquals("4", video.getOption("--concurrent-fragments"))
+        assertEquals("4", audio.getOption("--concurrent-fragments"))
+    }
 
     @Test
     fun audioProfilesMapToHonestFfmpegOptions() {
@@ -52,7 +106,6 @@ class DownloadRequestFactoryTest {
                 subtitleLanguages = "en.*,hi",
                 trimStart = "00:00:03",
                 trimEnd = "00:00:08",
-                trimPrecise = true,
             ),
         )
 
@@ -63,17 +116,20 @@ class DownloadRequestFactoryTest {
         assertTrue(request.hasOption("--write-auto-subs"))
         assertTrue(request.hasOption("--embed-subs"))
         assertEquals("en.*,hi", request.getOption("--sub-langs"))
+        // Mi5G TrimSpec normalizes clock times to seconds, which yt-dlp accepts.
         assertEquals("*3-8", request.getOption("--download-sections"))
-        assertTrue(request.hasOption("--force-keyframes-at-cuts"))
-    }
-
-    @Test
-    fun fastTrimDoesNotForceKeyframesAndOpenEndUsesInf() {
-        val request = built(DownloadRequest(url = URL, trimStart = "1:30", trimEnd = "", trimPrecise = false))
-        assertEquals("*90-inf", request.getOption("--download-sections"))
         assertFalse(request.hasOption("--force-keyframes-at-cuts"))
-        val untrimmed = built(DownloadRequest(url = URL))
-        assertFalse(untrimmed.hasOption("--download-sections"))
+
+        val precise = built(
+            DownloadRequest(
+                url = URL,
+                trimStart = "00:00:03",
+                trimEnd = "00:00:08",
+                trimPrecise = true,
+            ),
+        )
+        assertEquals("*3-8", precise.getOption("--download-sections"))
+        assertTrue(precise.hasOption("--force-keyframes-at-cuts"))
     }
 
     @Test
@@ -150,14 +206,7 @@ class DownloadRequestFactoryTest {
 
         val dlReq = built(DownloadRequest(url = ytUrl))
         assertFalse(dlReq.hasOption("--extractor-args"))
-
-        val recoveryReq = DownloadRequestFactory.download(
-            DownloadJob(id = "test-job", request = DownloadRequest(url = ytUrl)),
-            staging,
-            recoveryAttempt = true,
-        )
-        assertFalse(recoveryReq.hasOption("--extractor-args"))
-        assertFalse(recoveryReq.hasOption("--impersonate"))
+        assertFalse(dlReq.hasOption("--impersonate"))
     }
 
     @Test
@@ -223,17 +272,22 @@ class DownloadRequestFactoryTest {
     }
 
     @Test
-    fun directRecoveryUsesAndroidCompatibleHeadersAndGenericRetry() {
-        val recovery = DownloadRequestFactory.download(
-            DownloadJob(id = "test-job", request = DownloadRequest(url = URL)),
+    fun browserCandidateUsesAndroidCompatibleHeaders() {
+        val candidate = DownloadRequestFactory.download(
+            DownloadJob(
+                id = "test-job",
+                request = DownloadRequest(
+                    url = URL,
+                    resolvedMediaUrl = "https://cdn.example.test/media.mp4",
+                ),
+            ),
             staging,
-            recoveryAttempt = true,
         )
 
-        assertEquals(null, recovery.getOption("--impersonate"))
-        assertFalse(recovery.hasOption("--extractor-args"))
-        assertEquals(URL, recovery.getOption("--referer"))
-        assertTrue(recovery.getOption("--user-agent").orEmpty().contains("Chrome/"))
+        assertEquals(null, candidate.getOption("--impersonate"))
+        assertFalse(candidate.hasOption("--extractor-args"))
+        assertEquals(URL, candidate.getOption("--referer"))
+        assertTrue(candidate.getOption("--user-agent").orEmpty().contains("Chrome/"))
     }
 
     @Test
@@ -372,6 +426,51 @@ class DownloadRequestFactoryTest {
         val audioCmd = audioReq.buildCommand()
         assertFalse(audioCmd.any { it.contains("impersonate", ignoreCase = true) })
         assertTrue(audioCmd.any { it == "--no-cache-dir" })
+        assertFalse(audioCmd.contains("--cache-dir"))
+    }
+
+    @Test
+    fun customArgumentsEnforceCaseInsensitivePolicyAndIsolateUrlArgv() {
+        val req = built(
+            DownloadRequest(
+                url = "$URL?next=--exec%20id",
+                mode = MediaMode.VIDEO,
+                customArguments = listOf(
+                    "--EXEC", "touch /sdcard/pwn",
+                    "--Downloader=curl",
+                    "--Config", "/tmp/yt.conf",
+                    "--Proxy", "http://proxy.invalid:8080",
+                    "--Netrc",
+                    "--No-Check-Certificates",
+                    "--add-header", "Cookie:secret=1",
+                    "--add-header=Authorization:Bearer topsecret",
+                    "--add-header", "X-Untrusted: blocked",
+                    "-HCookie:attached=1",
+                    "--bad\nflag",
+                    "--add-header", "X-Requested-With: VRKA",
+                    "--limit-rate", "2M",
+                    "--no-cache-dir",
+                ),
+            ),
+        )
+        val cmd = req.buildCommand()
+        assertFalse(cmd.any { it.equals("--exec", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("pwn") })
+        assertFalse(cmd.any { it.contains("downloader", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("--config", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("/tmp/yt.conf") })
+        assertFalse(cmd.any { it.contains("--proxy", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("proxy.invalid") })
+        assertFalse(cmd.any { it.equals("--netrc", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("check-certificates", ignoreCase = true) })
+        assertFalse(cmd.any { it.contains("secret=1") || it.contains("topsecret") || it.contains("attached=1") || it.contains("X-Untrusted") })
+        assertFalse(cmd.any { it.contains("bad\nflag") })
+        assertTrue(cmd.contains("--add-header"))
+        assertTrue(cmd.contains("X-Requested-With: VRKA"))
+        assertTrue(cmd.contains("--limit-rate"))
+        assertTrue(cmd.contains("2M"))
+        assertTrue(cmd.contains("--no-cache-dir"))
+        assertTrue(cmd.contains("$URL?next=--exec%20id"))
     }
 
     @Test
@@ -408,30 +507,82 @@ class DownloadRequestFactoryTest {
     }
 
     @Test
-    fun youTubeContextAddsCookiesAndPlayerClientOnlyForYouTubePages() {
-        val plan = com.mvrk.vrka.mi5g.youtube.YouTubeRecovery.plans(true).first()
-        val ctx = DownloadRequestFactory.YouTubeContext(cookieFile = "/data/mi5g/youtube_cookies.txt", plan = plan)
-        val yt = DownloadRequestFactory.download(
-            DownloadJob(id = "yt", request = DownloadRequest(url = "https://youtu.be/dQw4w9WgXcQ")), staging, youtube = ctx,
+    fun diagnosticCommandRecordsTheRealFlagsAndRedactsHeaderValues() {
+        val request = DownloadRequestFactory.sizeEstimate(
+            DownloadRequest(
+                url = URL,
+                customHeaders = mapOf(
+                    "Cookie" to "session=super-secret-token",
+                    "Accept-Language" to "en-US",
+                ),
+            ),
         )
-        assertEquals("/data/mi5g/youtube_cookies.txt", yt.getOption("--cookies"))
-        assertEquals("youtube:player_client=web_embedded,web_safari", yt.getOption("--extractor-args"))
-        val info = DownloadRequestFactory.info(DownloadRequest(url = "https://www.youtube.com/watch?v=x"), ctx)
-        assertEquals("/data/mi5g/youtube_cookies.txt", info.getOption("--cookies"))
 
-        val other = DownloadRequestFactory.download(DownloadJob(id = "o", request = DownloadRequest(url = URL)), staging, youtube = ctx)
-        assertFalse(other.hasOption("--cookies"))
-        assertFalse(other.hasOption("--extractor-args"))
+        val command = DownloadRequestFactory.diagnosticCommand(request)
 
-        val resolved = DownloadRequestFactory.download(
-            DownloadJob(id = "r", request = DownloadRequest(url = "https://youtu.be/x", resolvedMediaUrl = "https://rr1.googlevideo.com/videoplayback?x=1")),
-            staging, youtube = ctx,
+        assertTrue(command.startsWith("yt-dlp "))
+        assertTrue(command.contains("--simulate"))
+        assertTrue(command.contains("--dump-single-json"))
+        assertTrue(command.contains("--socket-timeout 10"))
+        assertTrue(command.contains("--retries 2"))
+        assertTrue(command.contains("Cookie:<redacted>"))
+        assertTrue(command.contains("Accept-Language:<redacted>"))
+        assertFalse(command.contains("super-secret-token"))
+        assertFalse(command.contains("en-US"))
+        assertTrue(command.contains(URL))
+    }
+
+    @Test
+    fun playlistSizeEstimateIncludesFlatPlaylist() {
+        val playlistReq = DownloadRequest(
+            url = "https://youtube.com/playlist?list=OLAK5uy_lj1KcaPJYjA1n29DoIF68QMbDehOplyEI",
+            isPlaylist = true,
         )
-        assertFalse(resolved.hasOption("--cookies"))
+        val playlistEstimateCommand = DownloadRequestFactory.sizeEstimate(playlistReq)
+        assertTrue(playlistEstimateCommand.hasOption("--flat-playlist"))
+        assertFalse(playlistEstimateCommand.hasOption("--no-playlist"))
 
-        val plain = DownloadRequestFactory.download(DownloadJob(id = "p", request = DownloadRequest(url = "https://youtu.be/x")), staging)
-        assertFalse(plain.hasOption("--cookies"))
-        assertFalse(plain.hasOption("--extractor-args"))
+        val singleReq = DownloadRequest(
+            url = "https://youtube.com/watch?v=dQw4w9WgXcQ",
+            isPlaylist = false,
+        )
+        val singleEstimateCommand = DownloadRequestFactory.sizeEstimate(singleReq)
+        assertFalse(singleEstimateCommand.hasOption("--flat-playlist"))
+        assertTrue(singleEstimateCommand.hasOption("--no-playlist"))
+    }
+
+    @Test
+    fun safeOutputNamesSanitizesTikTokSyntheticFixtures() {
+        // Multi-line TikTok caption with emojis, hashtags, CJK, Cyrillic, and control characters (> 300 chars)
+        val longTikTokCaption = """
+            🔥 Amazing Dance Performance! 🕺💃 #trending #viral #fyp
+            Check out this incredible choreography by @dancer_official! ✨🌟
+            한국어 댄스 챌린지 🎵 Русские субтитры 🇷🇺
+            Special thanks to all fans who supported this video! ❤️❤️❤️
+            Line 2 with \ / : * ? " < > | invalid chars and \t tabs
+        """.trimIndent()
+
+        val sanitized = SafeOutputNames.sanitize(longTikTokCaption, "mp4")
+        assertTrue(sanitized.endsWith(".mp4"))
+        assertFalse(sanitized.contains('\n'))
+        assertFalse(sanitized.contains('\r'))
+        assertFalse(sanitized.contains('\t'))
+        assertFalse(sanitized.contains('\\'))
+        assertFalse(sanitized.contains('/'))
+        assertFalse(sanitized.contains(':'))
+        assertFalse(sanitized.contains('*'))
+        assertFalse(sanitized.contains('?'))
+        assertFalse(sanitized.contains('"'))
+        assertFalse(sanitized.contains('<'))
+        assertFalse(sanitized.contains('>'))
+        assertFalse(sanitized.contains('|'))
+
+        val stem = sanitized.substringBeforeLast(".mp4")
+        val stemUtf8Bytes = stem.toByteArray(Charsets.UTF_8).size
+        assertTrue("Stem UTF-8 bytes ($stemUtf8Bytes) must be <= 120 bytes", stemUtf8Bytes <= 120)
+        // Ensure NFC normalization
+        val isNfc = java.text.Normalizer.isNormalized(stem, java.text.Normalizer.Form.NFC)
+        assertTrue("Stem must be valid NFC normalized Unicode", isNfc)
     }
 
     private fun built(request: DownloadRequest) =
@@ -442,5 +593,6 @@ class DownloadRequestFactoryTest {
 
     private companion object {
         const val URL = "https://example.test/video"
+        const val CACHE_DIR = "/data/user/0/com.mvrk.vrka/cache/yt-dlp"
     }
 }

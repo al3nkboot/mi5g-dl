@@ -1,35 +1,29 @@
-# VRKA Android 5.0.2
+# VRKA Android 5.1.5
 
-## 5.0.2
+## Highlights
 
-- Fixed in-app application update detection and APK selection.
-- Improved background application updates with persistent WorkManager downloads.
-- Added retry handling for temporary network failures and connection interruptions.
-- Improved APK staging, verification, and update-ready notification handling.
-- Improved update installation and recovery behavior.
+- Playlist downloads: Playlists are now expanded into individual download jobs, allowing multiple videos to download concurrently with separate progress and History entries.
+- Playlist selection: When a YouTube link contains both a video and playlist, choose whether to download the entire playlist or just that video.
+- More reliable file saving: Improved MediaStore publishing and recovery to prevent completed downloads from being lost when a storage operation fails.
+- Updater improvements: Fixed update checks when the installed version is already current or newer, while retaining downgrade protection.
+- Android 16 download notifications: Improved background download handling and notification separation for concurrent downloads.
+- Updated Download branding: Replaced the Download page's text logo with the new transparent purple VRKA wordmark, compatible with light and dark themes.
 
-## 5.0
+## Reliability and security
 
-- Redesigned the interface with the Liquid Glass navigation system and horizontal swipe navigation.
-- Added configurable concurrent downloads with bounded scheduling and independent cancellation/failure handling.
-- Added Android Share Sheet support with robust shared-URL extraction and Download URL pre-filling.
-- Added actual downloaded-resolution tracking and improved Queue/History media metadata.
-- Added safer History management with record-only deletion, file deletion, multi-select, batch actions, and destructive-action safeguards.
-- Improved download state persistence across process restarts and hardened terminal job-state handling.
-- Restored and hardened Browser Fallback discovery and transfer handoff through GeckoView and yt-dlp.
-- Improved Browser Fallback reliability by separating browser UI/session lifecycle from active transfers and removing blocking worker operations.
-- Added validated custom yt-dlp argument templates with shell-free execution, safe staging/output handling, and fallback isolation.
-- Improved Android yt-dlp compatibility, including handling of unsupported impersonation targets.
-- Added optional, default-off H.264 Compatibility Mode using local FFmpeg conversion and post-conversion validation.
-- Reworked subtitle handling with targeted language selection, rate-limit/failure isolation, container-aware embedding, and final subtitle-track verification.
-- Improved YouTube subtitle handling for creator/manual captions and automatic-caption fallback.
-- Upgraded GeckoView to 156.0.20260921121718 and improved browser-component/runtime reporting.
-- Improved component updater reliability, installed-version detection, state transitions, cancellation, and channel switching.
-- Hardened request/header handling, private browser-candidate state, diagnostics, output validation, and staged-file cleanup.
-- Improved Settings descriptions and component/status presentation to reflect the final production architecture.
+- Fixed queue completion and cleanup issues affecting subsequent downloads and History deletion.
+- Added cryptographic verification of uBlock Origin extension packages before installation.
+- Improved media detector credential handling and redirect restrictions.
+- Refined R8/ProGuard rules while retaining required serialization, database and background-work functionality.
 
-## Known Limitations
+## Compatibility
 
-- Browser Fallback downloads do not currently fetch subtitles.
-- H.264 Compatibility Mode is optional and disabled by default.
-- Browser Fallback remains dependent on site discovery and yt-dlp/site compatibility.
+- Android 8.0 or later.
+- ARM64 (`arm64-v8a`).
+- Target SDK 36.
+
+## Updating
+
+- From v5.1.4, v5.1.3 or v5.1.2: Update through **Settings -> Check for Updates**, or install the APK over the existing installation.
+- Do not uninstall the previous version. Existing Queue, History, Settings and custom templates are preserved.
+- For changelogs of older releases, see [CHANGELOG.md](CHANGELOG.md) or [GitHub Releases](https://github.com/MaverickRox/VRKA-Android/releases).

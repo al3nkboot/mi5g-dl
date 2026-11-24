@@ -498,6 +498,34 @@ class AppUpdateManagerTest {
             AppUpdateCheckState.UpToDate("5.0.1"),
             AppUpdateManager.resolveCheckState(release, SemanticVersion(5, 0, 1), "5.0.1"),
         )
+        // Manifest older than or equal to installed versionCode (50104 <= 50105) reports UpToDate without error
+        val manifest50104 = com.mvrk.vrka.update.security.ReleaseManifest(
+            schema = "vrka-manifest-v1",
+            schemaVersion = 1,
+            metadataRevision = 4L,
+            channel = "stable",
+            repository = com.mvrk.vrka.update.security.RepositoryInfo("MaverickRox", "VRKA-Android"),
+            releaseTag = "v5.1.4",
+            applicationId = "com.mvrk.vrka",
+            versionName = "5.1.4",
+            versionCode = 50104L,
+            sourceCommit = "abcdef0123456789abcdef0123456789abcdef01",
+            issuedAt = "2026-11-10T12:00:00Z",
+            expiresAt = "2027-11-10T12:00:00Z",
+            apk = com.mvrk.vrka.update.security.ApkManifestInfo("VRKA-Android-v5.1.4.apk", 25000000L, "a".repeat(64), "b".repeat(64)),
+        )
+        val releaseWithManifest50104 = release.copy(manifest = manifest50104)
+        assertEquals(
+            AppUpdateCheckState.UpToDate("5.1.5"),
+            AppUpdateManager.resolveCheckState(releaseWithManifest50104, SemanticVersion(5, 1, 5), "5.1.5", currentVersionCode = 50105L),
+        )
+        // Manifest equal to installed versionCode (50105 <= 50105) reports UpToDate
+        val manifest50105 = manifest50104.copy(versionCode = 50105L, versionName = "5.1.5", releaseTag = "v5.1.5")
+        val releaseWithManifest50105 = release.copy(manifest = manifest50105)
+        assertEquals(
+            AppUpdateCheckState.UpToDate("5.1.5"),
+            AppUpdateManager.resolveCheckState(releaseWithManifest50105, SemanticVersion(5, 1, 5), "5.1.5", currentVersionCode = 50105L),
+        )
         assertTrue(
             AppUpdateManager.resolveCheckState(null, SemanticVersion(5, 0, 1), "5.0.1") is
                 AppUpdateCheckState.Error,
@@ -526,6 +554,214 @@ class AppUpdateManagerTest {
         assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkDownloadUrl = "http://github.com/asset.apk")))
         assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(tagName = "v5.0")))
         assertFalse(AppUpdateManager.isValidReleaseForDownload(release.copy(apkSha256 = "invalid")))
+    }
+
+    @Test
+    fun test511UpdaterCanSelectCanonical512ReleaseAndAsset() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.1.2",
+                assets = listOf(
+                    "VRKA-Android-v5.1.2.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.2/VRKA-Android-v5.1.2.apk",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 1, 2), release.version)
+        assertEquals("VRKA-Android-v5.1.2.apk", release.apkFileName)
+        assertTrue(release.version.isNewerThan(SemanticVersion(5, 1, 1)))
+        assertFalse(SemanticVersion(5, 1, 1).isNewerThan(release.version))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.1.2", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+    }
+
+    @Test
+    fun test512UpdaterCanSelectCanonical513ReleaseAndInstallMetadata() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.1.3",
+                assets = listOf(
+                    "VRKA-Android-v5.1.3.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.3/VRKA-Android-v5.1.3.apk",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 1, 3), release.version)
+        assertEquals("VRKA-Android-v5.1.3.apk", release.apkFileName)
+        assertTrue(release.version.isNewerThan(SemanticVersion(5, 1, 2)))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.1.3", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+        assertNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = release.apkFileName,
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.3",
+                apkVersionCode = 50103L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.2",
+                installedVersionCode = 50102L,
+            ),
+        )
+    }
+
+    @Test
+    fun test513UpdaterCanSelectCanonical514ReleaseAndInstallMetadata() {
+        val release = AppUpdateManager.parseReleaseJson(
+            releaseJson(
+                tag = "v5.1.4",
+                assets = listOf(
+                    "VRKA-Android-v5.1.4.apk" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.4/VRKA-Android-v5.1.4.apk",
+                    "VRKA-Android-v5.1.4.manifest.json" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.4/VRKA-Android-v5.1.4.manifest.json",
+                    "VRKA-Android-v5.1.4.manifest.json.asc" to
+                        "https://github.com/MaverickRox/VRKA-Android/releases/download/v5.1.4/VRKA-Android-v5.1.4.manifest.json.asc",
+                ),
+            ),
+        )!!
+
+        assertEquals(SemanticVersion(5, 1, 4), release.version)
+        assertEquals("VRKA-Android-v5.1.4.apk", release.apkFileName)
+        assertNotNull(release.manifestDownloadUrl)
+        assertNotNull(release.signatureDownloadUrl)
+        assertTrue(release.version.isNewerThan(SemanticVersion(5, 1, 3)))
+        assertTrue(AppUpdateManager.isValidDownloadTarget("5.1.4", release.apkFileName))
+        assertTrue(AppUpdateManager.isValidReleaseForDownload(release))
+        assertNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = release.apkFileName,
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.4",
+                apkVersionCode = 50104L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.3",
+                installedVersionCode = 50103L,
+            ),
+        )
+        assertNotNull(
+            AppUpdateManager.validateInstallMetadata(
+                apkFileName = "VRKA-Android-v5.1.3.apk",
+                apkPackageName = "com.mvrk.vrka",
+                apkVersionName = "5.1.3",
+                apkVersionCode = 50103L,
+                installedPackageName = "com.mvrk.vrka",
+                installedVersionName = "5.1.4",
+                installedVersionCode = 50104L,
+            ),
+        )
+    }
+
+    @Test
+    fun testInstallMetadataAcceptsValid511To512Upgrade() {
+        // Upgrading installed v5.1.1 (50101) to incoming v5.1.2 (50102) is valid and returns null
+        val error = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-Android-v5.1.2.apk",
+            apkPackageName = "com.mvrk.vrka",
+            apkVersionName = "5.1.2",
+            apkVersionCode = 50102L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.1",
+            installedVersionCode = 50101L,
+        )
+        assertNull("Valid v5.1.1 to v5.1.2 upgrade must be accepted without error", error)
+    }
+
+    @Test
+    fun testInstallMetadataRejectsSameVersionInstallationAttempt() {
+        // Attempting to install the identical v5.1.2 (50102) over an already installed v5.1.2 (50102)
+        // Uses internally consistent version name "5.1.2", filename "VRKA-Android-v5.1.2.apk", and code 50102L
+        val error = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-Android-v5.1.2.apk",
+            apkPackageName = "com.mvrk.vrka",
+            apkVersionName = "5.1.2",
+            apkVersionCode = 50102L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.2",
+            installedVersionCode = 50102L,
+        )
+        assertNotNull("Same-version installation must be rejected", error)
+        assertTrue(
+            "Expected version code or newer version rejection error, got: $error",
+            error!!.contains("update version code must be greater than installed version code") ||
+                error.contains("update version must be newer than the installed version"),
+        )
+    }
+
+    @Test
+    fun testInstallMetadataRejectsLowerVersionDowngradeAttempt() {
+        // Attempting to install older v5.1.1 (50101) over installed v5.1.2 (50102)
+        val error = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-Android-v5.1.1.apk",
+            apkPackageName = "com.mvrk.vrka",
+            apkVersionName = "5.1.1",
+            apkVersionCode = 50101L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.2",
+            installedVersionCode = 50102L,
+        )
+        assertNotNull("Lower-version downgrade must be rejected", error)
+        assertTrue(
+            "Expected downgrade rejection message, got: $error",
+            error!!.contains("update version code must be greater than installed version code") ||
+                error.contains("update version must be newer than the installed version"),
+        )
+    }
+
+    @Test
+    fun testInstallMetadataRejectsInvalidPackageOrVersionMetadata() {
+        // Mismatched application package name
+        val packageError = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-Android-v5.1.2.apk",
+            apkPackageName = "com.untrusted.spoofed",
+            apkVersionName = "5.1.2",
+            apkVersionCode = 50102L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.1",
+            installedVersionCode = 50101L,
+        )
+        assertNotNull("Mismatched package name must be rejected", packageError)
+        assertTrue(packageError!!.contains("package name does not match", ignoreCase = true))
+
+        // Version name in APK differs from filename version
+        val versionNameMismatch = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-Android-v5.1.2.apk",
+            apkPackageName = "com.mvrk.vrka",
+            apkVersionName = "5.1.3",
+            apkVersionCode = 50103L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.1",
+            installedVersionCode = 50101L,
+        )
+        assertNotNull("Version name differing from filename must be rejected", versionNameMismatch)
+        assertTrue(versionNameMismatch!!.contains("does not match filename version", ignoreCase = true))
+
+        // Non-canonical filename format
+        val nonCanonicalFileName = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-v5.1.2-beta.apk",
+            apkPackageName = "com.mvrk.vrka",
+            apkVersionName = "5.1.2",
+            apkVersionCode = 50102L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.1",
+            installedVersionCode = 50101L,
+        )
+        assertNotNull("Non-canonical filename format must be rejected", nonCanonicalFileName)
+        assertTrue(nonCanonicalFileName!!.contains("non-canonical APK filename", ignoreCase = true))
+
+        // Invalid non-semantic version string
+        val invalidVersionError = AppUpdateManager.validateInstallMetadata(
+            apkFileName = "VRKA-Android-v5.1.2.apk",
+            apkPackageName = "com.mvrk.vrka",
+            apkVersionName = "invalid_version",
+            apkVersionCode = 50102L,
+            installedPackageName = "com.mvrk.vrka",
+            installedVersionName = "5.1.1",
+            installedVersionCode = 50101L,
+        )
+        assertNotNull("Invalid version string must be rejected", invalidVersionError)
+        assertTrue(invalidVersionError!!.contains("package version name is invalid", ignoreCase = true))
     }
 
     @Test

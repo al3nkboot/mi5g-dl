@@ -18,9 +18,11 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -101,27 +103,48 @@ data class ComponentStatus(
     val lifecycleState: ComponentLifecycleState = ComponentLifecycleState.UNKNOWN,
     val checkState: ComponentCheckState = ComponentCheckState.CHECK_IDLE,
     val updateState: ComponentUpdateState = ComponentUpdateState.UPDATE_IDLE,
+    val isResolvingInstalledVersion: Boolean = false,
     val message: String = "",
     val error: String? = null,
     val lastChecked: Long = 0L,
+    val downloadUrl: String? = null,
+    val expectedSha256: String? = null,
 ) {
-    val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING ||
-        lifecycleState == ComponentLifecycleState.CHECKING
-    val isUpdating: Boolean get() = (
-        updateState in setOf(
-            ComponentUpdateState.DOWNLOADING,
-            ComponentUpdateState.VERIFYING,
-            ComponentUpdateState.INSTALLING,
-        ) || lifecycleState in setOf(
-            ComponentLifecycleState.DOWNLOADING,
-            ComponentLifecycleState.VERIFYING,
-            ComponentLifecycleState.STAGING,
-            ComponentLifecycleState.INSTALLING,
-            ComponentLifecycleState.VERIFYING_INSTALL,
-            ComponentLifecycleState.ROLLING_BACK,
-        )
-    ) && updateState != ComponentUpdateState.UPDATE_SUCCESS &&
-        lifecycleState !in setOf(ComponentLifecycleState.UP_TO_DATE, ComponentLifecycleState.UPDATED)
+    /**
+     * Only a real discovery request counts as checking. Resolving the installed version is a
+     * local read that runs alongside discovery, so it must never disable the Check All button
+     * or present "Checking" after discovery already finished.
+     */
+    val isChecking: Boolean get() = checkState == ComponentCheckState.CHECKING
+    val isUpdating: Boolean get() = updateState in ACTIVE_UPDATE_STATES
+}
+
+private val ACTIVE_UPDATE_STATES = setOf(
+    ComponentUpdateState.DOWNLOADING,
+    ComponentUpdateState.VERIFYING,
+    ComponentUpdateState.INSTALLING,
+)
+
+/**
+ * Installed-version resolution shared by both components. Artifact metadata is tried first,
+ * then the active runtime record, then a bounded `--version` run. A cached or unknown value
+ * must never win over a readable artifact, and "Unknown" is never a resolved version.
+ */
+internal object ComponentVersionPriority {
+    fun sanitize(raw: String?): String? {
+        val clean = raw?.removePrefix("yt-dlp ")?.trim().orEmpty()
+        return clean.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+    }
+
+    /**
+     * Returns the first sanitized candidate. Candidates are evaluated in order and lazily:
+     * reading the bundled zipapp copies a multi-megabyte resource, so it must only run when
+     * the installed artifact could not answer.
+     */
+    fun resolve(vararg candidates: () -> String?): String? =
+        candidates.firstNotNullOfOrNull { candidate ->
+            sanitize(runCatching(candidate).getOrNull())
+        }
 }
 
 class ComponentUpdateManager private constructor(private val context: Context) {
@@ -134,6 +157,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     private val globalCheckGeneration = AtomicLong(0L)
     private val activeCheckJobs = ConcurrentHashMap<String, Job>()
     private val activeUpdateJobs = ConcurrentHashMap<String, Job>()
+
+    /**
+     * Generation that last set CHECKING for a component. Only the owner may clear the
+     * checking state, so a superseded request can never wipe a newer one's UI state.
+     */
+    private val checkOwners = ConcurrentHashMap<String, Long>()
 
     // Local check-request gate and caching
     private data class ReleaseCacheEntry(val tag: String, val timestamp: Long)
@@ -156,41 +185,55 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     @Volatile
     private var rateLimitErrorMessage: String? = null
 
+    /**
+     * The active runtime's recorded version, wired by [VrkaDownloadManager]. Null until wired,
+     * so the manager still works with metadata only in isolated tests.
+     */
+    @Volatile
+    internal var runtimeVersionProvider: (() -> String?)? = null
+
+    /** A bounded `yt-dlp --version` probe of the active binary. Wired by [VrkaDownloadManager]. */
+    @Volatile
+    internal var boundedVersionProbe: (() -> String?)? = null
+
     internal fun getInstalledYtDlpVersion(): String {
-        val installedZipAppVersion = runCatching {
-            val installedZipApp = java.io.File(SecureComponentUpdater.getYoutubeDLDir(context), "yt-dlp")
-            InstalledComponentVersionReader.readYtDlpVersion(installedZipApp)
-        }.getOrNull()?.ifBlank { null }
-        if (installedZipAppVersion != null) {
-            prefs.edit().putString(KEY_YTDLP_VER, installedZipAppVersion).apply()
-            return installedZipAppVersion
+        // Priority: artifact metadata, then the active runtime record, then a bounded
+        // `--version` run. A first install has no cached value, so metadata and the probe are
+        // what keep "Installed: Unavailable" from appearing next to an available update.
+        val resolution = ComponentVersionPriority.resolve(
+            { readInstalledZipAppVersion() },
+            { InstalledComponentVersionReader.readBundledYtDlpVersion(context) },
+            { runtimeVersionProvider?.invoke() },
+            { boundedVersionProbe?.invoke() },
+            { prefs.getString(KEY_YTDLP_VER, null) },
+            { legacyLibraryVersion() },
+        )
+        if (resolution != null) {
+            prefs.edit().putString(KEY_YTDLP_VER, resolution).apply()
+            return resolution
         }
-
-        val runtimeVer = runCatching {
-            YoutubeDL.getInstance().versionName(context)?.removePrefix("yt-dlp ")?.trim()
-        }.getOrNull()?.ifBlank { null }
-        if (runtimeVer != null) {
-            prefs.edit().putString(KEY_YTDLP_VER, runtimeVer).apply()
-            return runtimeVer
-        }
-        val prefVer = prefs.getString(KEY_YTDLP_VER, null)
-        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) return prefVer
-        val ytdlPrefs = context.getSharedPreferences("youtubedl-android", Context.MODE_PRIVATE)
-        val ytdlVer = ytdlPrefs.getString("dlpVersionName", null)
-            ?: ytdlPrefs.getString("dlpVersion", null)
-        if (!ytdlVer.isNullOrBlank()) {
-            val clean = ytdlVer.removePrefix("yt-dlp ").trim()
-            prefs.edit().putString(KEY_YTDLP_VER, clean).apply()
-            return clean
-        }
-
-        val bundledVer = InstalledComponentVersionReader.readBundledYtDlpVersion(context)
-        if (!bundledVer.isNullOrBlank()) {
-            prefs.edit().putString(KEY_YTDLP_VER, bundledVer).apply()
-            return bundledVer
-        }
-
         return "Unknown"
+    }
+
+    /**
+     * Cheap constructor-time read. The bundled zipapp copy, runtime query and `--version`
+     * probe all belong on a background thread, so they are left to
+     * [refreshInstalledVersions] and only the installed artifact plus the cache are read here.
+     */
+    private fun cachedInstalledYtDlpVersion(): String =
+        ComponentVersionPriority.sanitize(readInstalledZipAppVersion())
+            ?: ComponentVersionPriority.sanitize(prefs.getString(KEY_YTDLP_VER, null))
+            ?: ""
+
+    private fun readInstalledZipAppVersion(): String? = runCatching {
+        val installedZipApp = java.io.File(SecureComponentUpdater.getYoutubeDLDir(context), "yt-dlp")
+        InstalledComponentVersionReader.readYtDlpVersion(installedZipApp)
+    }.getOrNull()
+
+    private fun legacyLibraryVersion(): String? {
+        val ytdlPrefs = context.getSharedPreferences("youtubedl-android", Context.MODE_PRIVATE)
+        return ytdlPrefs.getString("dlpVersionName", null)
+            ?: ytdlPrefs.getString("dlpVersion", null)
     }
 
 
@@ -207,34 +250,40 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     }
 
     private suspend fun getInstalledUBlockVersion(): String {
-        val geckoManager = runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
-        val runtimeVer = geckoManager?.getInstalledExtensionVersion(GeckoRuntimeManager.UBLOCK_ID)
-        if (!runtimeVer.isNullOrBlank()) {
+        // The XPI manifest is the installed artifact's own metadata: it is readable on a
+        // first install without starting GeckoView, which is what previously left the card
+        // at "Installed: Unavailable".
+        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+        val installedFile = ComponentVersionPriority.sanitize(readXpiManifestVersion(ublockXpi))
+        val bundled = if (installedFile == null) {
+            ComponentVersionPriority.sanitize(
+                runCatching {
+                    InstalledComponentVersionReader.readBundledExtensionVersion(context, "ublock.xpi")
+                }.getOrNull(),
+            )
+        } else {
+            null
+        }
+        // Seed the working copy so later extension loads and updates use the same file.
+        if ((installedFile ?: bundled) != null && (!ublockXpi.exists() || ublockXpi.length() == 0L)) {
+            runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
+                ?.seedBundledExtensionsIfMissing()
+        }
+        if (installedFile != null || bundled != null) {
+            val resolved = installedFile ?: bundled!!
+            prefs.edit().putString(KEY_UBLOCK_VER, resolved).apply()
+            return resolved
+        }
+        val runtimeVer = ComponentVersionPriority.sanitize(
+            runCatching { GeckoRuntimeManager.getInstance(context) }.getOrNull()
+                ?.getInstalledExtensionVersion(GeckoRuntimeManager.UBLOCK_ID),
+        )
+        if (runtimeVer != null) {
             prefs.edit().putString(KEY_UBLOCK_VER, runtimeVer).apply()
             return runtimeVer
         }
-        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
-        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
-        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
-            val fileVer = readXpiManifestVersion(ublockXpi)
-            if (!fileVer.isNullOrBlank()) {
-                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
-                return fileVer
-            }
-        }
-        geckoManager?.seedBundledExtensionsIfMissing()
-        if (ublockXpi.exists() && ublockXpi.length() > 0L) {
-            val fileVer = readXpiManifestVersion(ublockXpi)
-            if (!fileVer.isNullOrBlank()) {
-                prefs.edit().putString(KEY_UBLOCK_VER, fileVer).apply()
-                return fileVer
-            }
-        }
-        val prefVer = prefs.getString(KEY_UBLOCK_VER, null)
-        if (!prefVer.isNullOrBlank() && !prefVer.equals("Unknown", ignoreCase = true)) {
-            return prefVer
-        }
-        return "Unknown"
+        return ComponentVersionPriority.sanitize(prefs.getString(KEY_UBLOCK_VER, null)) ?: "Unknown"
     }
 
     private val _components = MutableStateFlow<Map<String, ComponentStatus>>(
@@ -242,15 +291,13 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_YTDLP to ComponentStatus(
                 id = ID_YTDLP,
                 name = "yt-dlp",
-                installedVersion = getInstalledYtDlpVersion().takeUnless {
-                    it.isBlank() || it.equals("Unknown", ignoreCase = true)
-                }.orEmpty(),
+                installedVersion = cachedInstalledYtDlpVersion(),
             ),
             ID_UBLOCK to ComponentStatus(
                 id = ID_UBLOCK,
                 name = "uBlock Origin",
-                installedVersion = prefs.getString(KEY_UBLOCK_VER, null)
-                    ?.takeIf { it.isNotBlank() && !it.equals("Unknown", ignoreCase = true) }
+                installedVersion = ComponentVersionPriority
+                    .sanitize(prefs.getString(KEY_UBLOCK_VER, null))
                     .orEmpty(),
             ),
         ),
@@ -306,8 +353,17 @@ class ComponentUpdateManager private constructor(private val context: Context) {
 
     fun refreshInstalledVersions() {
         scope.launch {
-            resolveAndPublishInstalledVersion(ID_YTDLP)
-            resolveAndPublishInstalledVersion(ID_UBLOCK)
+            listOf(ID_YTDLP, ID_UBLOCK).forEach { id ->
+                // Until the artifact has been read, an empty version means "still resolving",
+                // not "unavailable". This flag is display-only and never marks the component
+                // as checking: discovery may already have completed while this read runs.
+                updateState(id, ComponentStatusTransitions::resolutionStarted)
+                try {
+                    resolveAndPublishInstalledVersion(id)
+                } finally {
+                    updateState(id, ComponentStatusTransitions::resolutionFinished)
+                }
+            }
         }
     }
 
@@ -447,7 +503,11 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         id: String,
         channel: UpdatePreference = UpdatePreference.STABLE,
         generation: Long = checkGenerations.compute(id) { _, v -> (v ?: 0L) + 1L }!!,
+        isAutomaticCheck: Boolean = false,
     ) {
+        if (checkGenerations[id] != generation) return
+        currentCoroutineContext().ensureActive()
+        checkOwners[id] = generation
         updateState(id, ComponentStatusTransitions::beginCheck)
 
         try {
@@ -461,13 +521,46 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 // resolveAndPublishInstalledVersion.
                 resolveAndPublishInstalledVersion(id)
 
-                val latest = when (id) {
+                val (latest, amoDownloadUrl, amoSha) = when (id) {
                     ID_YTDLP -> {
                         val repo = if (channel == UpdatePreference.NIGHTLY) "yt-dlp-nightly-builds" else "yt-dlp"
-                        fetchLatestGithubRelease("yt-dlp", repo)
+                        val tag = fetchLatestGithubRelease("yt-dlp", repo)
+                        Triple(tag, null, null)
                     }
                     ID_UBLOCK -> {
-                        fetchLatestGithubRelease("gorhill", "uBlock")
+                        val now = System.currentTimeMillis()
+                        val lastCheck = prefs.getLong(KEY_AMO_UBLOCK_LAST_CHECK, 0L)
+                        val cachedVer = prefs.getString(KEY_AMO_UBLOCK_CACHED_VERSION, null)
+                        val cachedUrl = prefs.getString(KEY_AMO_UBLOCK_CACHED_URL, null)
+                        val cachedSha = prefs.getString(KEY_AMO_UBLOCK_CACHED_SHA256, null)
+
+                        if (isAutomaticCheck && (now - lastCheck < SIX_HOURS_MS) && cachedVer != null) {
+                            Log.d(TAG, "Skipping AMO check within 6h cooldown; reusing cached v$cachedVer")
+                            Triple(cachedVer, cachedUrl, cachedSha)
+                        } else {
+                            val cachedETag = prefs.getString(KEY_AMO_UBLOCK_ETAG, null)
+                            val releaseInfo = fetchLatestAmoRelease("ublock-origin", cachedETag)
+                            if (releaseInfo == null) {
+                                // HTTP 304 - clean cached result
+                                val resolvedVer = cachedVer
+                                    ?: prefs.getString(KEY_UBLOCK_VER, null)
+                                    ?: SecureComponentUpdater.BUNDLED_UBLOCK_VERSION
+                                prefs.edit().putLong(KEY_AMO_UBLOCK_LAST_CHECK, now).apply()
+                                Triple(resolvedVer, cachedUrl, cachedSha)
+                            } else {
+                                // HTTP 200 - new metadata
+                                prefs.edit()
+                                    .putString(KEY_AMO_UBLOCK_CACHED_VERSION, releaseInfo.version)
+                                    .putString(KEY_AMO_UBLOCK_CACHED_URL, releaseInfo.downloadUrl)
+                                    .putString(KEY_AMO_UBLOCK_CACHED_SHA256, releaseInfo.expectedSha256)
+                                    .putLong(KEY_AMO_UBLOCK_LAST_CHECK, now)
+                                    .apply()
+                                if (!releaseInfo.eTag.isNullOrBlank()) {
+                                    prefs.edit().putString(KEY_AMO_UBLOCK_ETAG, releaseInfo.eTag).apply()
+                                }
+                                Triple(releaseInfo.version, releaseInfo.downloadUrl, releaseInfo.expectedSha256)
+                            }
+                        }
                     }
                     else -> throw IllegalArgumentException("Unknown component $id")
                 }
@@ -489,6 +582,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         candidateVersion = latest,
                         channelSwitch = isChannelSwitch,
                         channelLabel = channel.label,
+                        downloadUrl = amoDownloadUrl,
+                        expectedSha256 = amoSha,
                     )
                 }
             }
@@ -519,8 +614,10 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                 updateState(id) { ComponentStatusTransitions.checkFailed(it, errMsg) }
             }
         } finally {
-            if (checkGenerations[id] == generation) {
-                activeCheckJobs.remove(id)
+            // Only the request that set CHECKING may clear it. A channel switch or a newer
+            // request already owns the current state in every other case.
+            if (checkOwners[id] == generation) {
+                checkOwners.remove(id, generation)
                 updateState(id) { current ->
                     if (current.checkState == ComponentCheckState.CHECKING) {
                         current.copy(checkState = ComponentCheckState.CHECK_IDLE, message = "Ready to check", error = null)
@@ -528,9 +625,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
                         current
                     }
                 }
-            } else {
-                activeCheckJobs.computeIfPresent(id) { _, j -> if (j.isCompleted) null else j }
             }
+            activeCheckJobs.computeIfPresent(id) { _, job -> if (job.isCompleted) null else job }
         }
     }
 
@@ -561,8 +657,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             try {
                 withTimeout(CHECK_TIMEOUT_MS + BATCH_CLEANUP_GRACE_MS) {
                     coroutineScope {
-                        val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
-                        val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
+                        val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel, isAutomaticCheck = true) }
+                        val ublock = async { checkUpdateInternal(ID_UBLOCK, channel, isAutomaticCheck = true) }
                         awaitAll(ytdlp, ublock)
                     }
                 }
@@ -608,8 +704,8 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             try {
                 withTimeout(CHECK_TIMEOUT_MS + BATCH_CLEANUP_GRACE_MS) {
                     coroutineScope {
-                        val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel) }
-                        val ublock = async { checkUpdateInternal(ID_UBLOCK, channel) }
+                        val ytdlp = async { checkUpdateInternal(ID_YTDLP, channel, isAutomaticCheck = true) }
+                        val ublock = async { checkUpdateInternal(ID_UBLOCK, channel, isAutomaticCheck = true) }
                         awaitAll(ytdlp, ublock)
                     }
                 }
@@ -656,7 +752,30 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             ID_YTDLP -> null to null
             ID_UBLOCK -> {
                 val clean = cleanVersionString(targetVer)
-                "https://github.com/gorhill/uBlock/releases/download/$clean/uBlock0_$clean.firefox.signed.xpi" to null
+                val url = current.downloadUrl
+                    ?: prefs.getString(KEY_AMO_UBLOCK_CACHED_URL, null)
+                    ?: if (clean == SecureComponentUpdater.BUNDLED_UBLOCK_VERSION) {
+                        "https://github.com/gorhill/uBlock/releases/download/$clean/uBlock0_$clean.firefox.signed.xpi"
+                    } else null
+
+                val sha = current.expectedSha256
+                    ?: prefs.getString(KEY_AMO_UBLOCK_CACHED_SHA256, null)
+                    ?: SecureComponentUpdater.approvedExtensionSha256(ID_UBLOCK, clean)
+
+                if (url.isNullOrBlank() || sha.isNullOrBlank()) {
+                    val msg = "Missing verified download URL or checksum for $id: v$clean"
+                    Log.w(TAG, msg)
+                    updateState(id) {
+                        it.copy(
+                            updateState = ComponentUpdateState.UPDATE_FAILED,
+                            lifecycleState = ComponentLifecycleState.FAILED,
+                            error = msg,
+                            message = "Update information incomplete.",
+                        )
+                    }
+                    return
+                }
+                url to sha
             }
             else -> return
         }
@@ -734,19 +853,16 @@ class ComponentUpdateManager private constructor(private val context: Context) {
             Dispatchers.IO.dispatch(continuation.context, Runnable {
                 var connection: HttpURLConnection? = null
                 try {
-                    connection = URL("https://api.github.com/repos/$owner/$repo/releases/latest")
-                        .openConnection() as HttpURLConnection
-                    connection.connectTimeout = NETWORK_CONNECT_TIMEOUT_MS
-                    connection.readTimeout = NETWORK_READ_TIMEOUT_MS
-                    connection.setRequestProperty("User-Agent", "VRKA-Android-Updater")
-                    connection.setRequestProperty("Accept", "application/vnd.github+json")
-                    connectionRef.set(connection)
-                    if (!continuation.isActive) {
-                        connectionRef.getAndSet(null)?.disconnect()
-                        return@Runnable
-                    }
+                    val (openedConnection, code) = openGithubMetadataConnection(
+                        initialUrl = "https://api.github.com/repos/$owner/$repo/releases/latest",
+                        connectTimeoutMs = NETWORK_CONNECT_TIMEOUT_MS,
+                        readTimeoutMs = NETWORK_READ_TIMEOUT_MS,
+                        connectionRef = connectionRef,
+                        isCancelled = { !continuation.isActive },
+                    ) ?: return@Runnable
+                    connection = openedConnection
 
-                    when (val code = connection.responseCode) {
+                    when (code) {
                         200 -> {
                             val jsonText = readBoundedResponseBody(connection.inputStream, MAX_RELEASE_METADATA_BYTES)
                             val json = JSONObject(jsonText)
@@ -818,10 +934,12 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     }
 
     private fun updateState(id: String, transform: (ComponentStatus) -> ComponentStatus) {
-        val map = _components.value.toMutableMap()
-        val existing = map[id] ?: return
-        map[id] = transform(existing)
-        _components.value = map
+        // Atomic compare-and-set: discovery, version resolution and worker observation all
+        // publish from different dispatchers, so a read-copy-write would lose updates.
+        _components.update { map ->
+            val existing = map[id] ?: return@update map
+            map + (id to transform(existing))
+        }
     }
 
     companion object {
@@ -833,6 +951,13 @@ class ComponentUpdateManager private constructor(private val context: Context) {
         private const val LEGACY_PUEMOS_VERSION_KEY = "ver_puemos"
         private const val LEGACY_PUEMOS_WORK_NAME = "VRKA_COMPONENT_UPDATE_puemos"
         private const val KEY_LAST_AUTO_CHECK_SUCCESS_TIMESTAMP = "last_auto_check_success_timestamp"
+
+        const val KEY_AMO_UBLOCK_ETAG = "amo_ublock_etag"
+        const val KEY_AMO_UBLOCK_LAST_CHECK = "amo_ublock_last_check"
+        const val KEY_AMO_UBLOCK_CACHED_VERSION = "amo_ublock_cached_version"
+        const val KEY_AMO_UBLOCK_CACHED_URL = "amo_ublock_cached_url"
+        const val KEY_AMO_UBLOCK_CACHED_SHA256 = "amo_ublock_cached_sha256"
+        const val SIX_HOURS_MS = 6 * 3600 * 1000L
 
         private const val CHECK_TIMEOUT_MS = 8_000L
         private const val BATCH_CLEANUP_GRACE_MS = 2_000L
@@ -917,6 +1042,96 @@ class ComponentUpdateManager private constructor(private val context: Context) {
     }
 }
 
+internal val APPROVED_GITHUB_METADATA_HOSTS = setOf(
+    "api.github.com",
+    "github.com",
+)
+private const val MAX_GITHUB_METADATA_REDIRECTS = 5
+private val GITHUB_METADATA_REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
+
+internal fun validateGithubMetadataUrl(
+    url: String,
+    allowedHosts: Set<String> = APPROVED_GITHUB_METADATA_HOSTS,
+    allowedSchemes: Set<String> = setOf("https"),
+): URL {
+    val parsed = URL(url)
+    val scheme = parsed.protocol?.lowercase(java.util.Locale.ROOT).orEmpty()
+    if (scheme !in allowedSchemes) {
+        throw SecurityException("Insecure protocol '$scheme' rejected for GitHub API metadata")
+    }
+    if (parsed.userInfo != null) {
+        throw SecurityException("Embedded userInfo rejected for GitHub API metadata")
+    }
+    val host = parsed.host?.lowercase(java.util.Locale.ROOT).orEmpty()
+    if (host.isBlank() || host !in allowedHosts) {
+        throw SecurityException("Unapproved redirect or request host '$host' rejected for GitHub API metadata")
+    }
+    return parsed
+}
+
+internal fun openGithubMetadataConnection(
+    initialUrl: String,
+    connectTimeoutMs: Int = 6_000,
+    readTimeoutMs: Int = 6_000,
+    connectionRef: AtomicReference<HttpURLConnection?>? = null,
+    isCancelled: () -> Boolean = { false },
+    allowedHosts: Set<String> = APPROVED_GITHUB_METADATA_HOSTS,
+    allowedSchemes: Set<String> = setOf("https"),
+    maxRedirects: Int = MAX_GITHUB_METADATA_REDIRECTS,
+    connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+): Pair<HttpURLConnection, Int>? {
+    var currentUrl = initialUrl
+    for (redirectCount in 0..maxRedirects) {
+        val parsed = validateGithubMetadataUrl(
+            url = currentUrl,
+            allowedHosts = allowedHosts,
+            allowedSchemes = allowedSchemes,
+        )
+        val conn = connectionFactory(parsed)
+        var handOffToCaller = false
+        try {
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = connectTimeoutMs
+            conn.readTimeout = readTimeoutMs
+            conn.setRequestProperty("User-Agent", "VRKA-Android-Updater")
+            conn.setRequestProperty("Accept", "application/vnd.github+json")
+            connectionRef?.set(conn)
+            if (isCancelled()) {
+                return null
+            }
+
+            val code = conn.responseCode
+            if (code in GITHUB_METADATA_REDIRECT_STATUS_CODES) {
+                val location = conn.getHeaderField("Location")
+                if (location.isNullOrBlank()) {
+                    throw IOException("HTTP $code redirect missing Location header from GitHub API")
+                }
+                if (redirectCount == maxRedirects) {
+                    throw IOException("Exceeded maximum redirect depth ($maxRedirects) for GitHub API")
+                }
+                val resolved = HeaderValidation.resolveRedirectUrl(currentUrl, location)
+                    ?: throw SecurityException("Rejected malformed or unsafe redirect from GitHub API")
+                validateGithubMetadataUrl(
+                    url = resolved,
+                    allowedHosts = allowedHosts,
+                    allowedSchemes = allowedSchemes,
+                )
+                currentUrl = resolved
+                continue
+            }
+
+            handOffToCaller = true
+            return conn to code
+        } finally {
+            if (!handOffToCaller) {
+                connectionRef?.compareAndSet(conn, null)
+                runCatching { conn.disconnect() }
+            }
+        }
+    }
+    throw IOException("Exceeded maximum redirect depth ($maxRedirects) for GitHub API")
+}
+
 internal fun readBoundedResponseBody(inputStream: InputStream, maxBytes: Int): String {
     require(maxBytes > 0) { "maxBytes must be positive" }
     val output = ByteArrayOutputStream(minOf(maxBytes, 8 * 1024))
@@ -932,4 +1147,199 @@ internal fun readBoundedResponseBody(inputStream: InputStream, maxBytes: Int): S
         }
     }
     return String(output.toByteArray(), Charsets.UTF_8)
+}
+
+data class AmoReleaseInfo(
+    val version: String,
+    val downloadUrl: String,
+    val expectedSha256: String,
+    val size: Long,
+    val eTag: String? = null,
+)
+
+internal val APPROVED_AMO_METADATA_HOSTS = setOf(
+    "addons.mozilla.org",
+    "addons.cdn.mozilla.net",
+)
+private const val MAX_AMO_METADATA_REDIRECTS = 3
+private val AMO_METADATA_REDIRECT_STATUS_CODES = setOf(301, 302, 303, 307, 308)
+
+internal fun validateAmoMetadataUrl(
+    url: String,
+    allowedHosts: Set<String> = APPROVED_AMO_METADATA_HOSTS,
+    allowedSchemes: Set<String> = setOf("https"),
+): URL {
+    val parsed = URL(url)
+    val scheme = parsed.protocol?.lowercase(java.util.Locale.ROOT).orEmpty()
+    if (scheme !in allowedSchemes) {
+        throw SecurityException("Insecure protocol '$scheme' rejected for AMO API metadata")
+    }
+    if (parsed.userInfo != null) {
+        throw SecurityException("Embedded userInfo rejected for AMO API metadata")
+    }
+    val host = parsed.host?.lowercase(java.util.Locale.ROOT).orEmpty()
+    if (host.isBlank() || host !in allowedHosts) {
+        throw SecurityException("Unapproved redirect or request host '$host' rejected for AMO API metadata")
+    }
+    return parsed
+}
+
+internal fun openAmoMetadataConnection(
+    initialUrl: String,
+    connectTimeoutMs: Int = 6_000,
+    readTimeoutMs: Int = 6_000,
+    ifNoneMatchETag: String? = null,
+    connectionRef: AtomicReference<HttpURLConnection?>? = null,
+    isCancelled: () -> Boolean = { false },
+    allowedHosts: Set<String> = APPROVED_AMO_METADATA_HOSTS,
+    allowedSchemes: Set<String> = setOf("https"),
+    maxRedirects: Int = MAX_AMO_METADATA_REDIRECTS,
+    connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+): Pair<HttpURLConnection, Int>? {
+    var currentUrl = initialUrl
+    for (redirectCount in 0..maxRedirects) {
+        val parsed = validateAmoMetadataUrl(
+            url = currentUrl,
+            allowedHosts = allowedHosts,
+            allowedSchemes = allowedSchemes,
+        )
+        val conn = connectionFactory(parsed)
+        var handOffToCaller = false
+        try {
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = connectTimeoutMs
+            conn.readTimeout = readTimeoutMs
+            conn.setRequestProperty("User-Agent", "VRKA-Android-Updater")
+            conn.setRequestProperty("Accept", "application/json")
+            if (redirectCount == 0 && !ifNoneMatchETag.isNullOrBlank()) {
+                conn.setRequestProperty("If-None-Match", ifNoneMatchETag)
+            }
+            connectionRef?.set(conn)
+            if (isCancelled()) {
+                return null
+            }
+
+            val code = conn.responseCode
+            if (code in AMO_METADATA_REDIRECT_STATUS_CODES) {
+                val location = conn.getHeaderField("Location")
+                if (location.isNullOrBlank()) {
+                    throw IOException("HTTP $code redirect missing Location header from AMO API")
+                }
+                if (redirectCount == maxRedirects) {
+                    throw IOException("Exceeded maximum redirect depth ($maxRedirects) for AMO API")
+                }
+                val resolved = HeaderValidation.resolveRedirectUrl(currentUrl, location)
+                    ?: throw SecurityException("Rejected malformed or unsafe redirect from AMO API")
+                validateAmoMetadataUrl(
+                    url = resolved,
+                    allowedHosts = allowedHosts,
+                    allowedSchemes = allowedSchemes,
+                )
+                currentUrl = resolved
+                continue
+            }
+
+            handOffToCaller = true
+            return conn to code
+        } finally {
+            if (!handOffToCaller) {
+                connectionRef?.compareAndSet(conn, null)
+                runCatching { conn.disconnect() }
+            }
+        }
+    }
+    throw IOException("Exceeded maximum redirect depth ($maxRedirects) for AMO API")
+}
+
+internal suspend fun fetchLatestAmoRelease(
+    addonSlug: String = "ublock-origin",
+    ifNoneMatchETag: String? = null,
+    connectTimeoutMs: Int = 6_000,
+    readTimeoutMs: Int = 6_000,
+    connectionFactory: (URL) -> HttpURLConnection = { it.openConnection() as HttpURLConnection },
+): AmoReleaseInfo? {
+    val apiUrl = "https://addons.mozilla.org/api/v5/addons/addon/$addonSlug/"
+    return suspendCancellableCoroutine { continuation ->
+        val connectionRef = AtomicReference<HttpURLConnection?>(null)
+        continuation.invokeOnCancellation {
+            connectionRef.getAndSet(null)?.disconnect()
+        }
+        Dispatchers.IO.dispatch(continuation.context, Runnable {
+            var connection: HttpURLConnection? = null
+            try {
+                val (openedConnection, code) = openAmoMetadataConnection(
+                    initialUrl = apiUrl,
+                    connectTimeoutMs = connectTimeoutMs,
+                    readTimeoutMs = readTimeoutMs,
+                    ifNoneMatchETag = ifNoneMatchETag,
+                    connectionRef = connectionRef,
+                    isCancelled = { !continuation.isActive },
+                    connectionFactory = connectionFactory,
+                ) ?: return@Runnable
+                connection = openedConnection
+
+                when (code) {
+                    200 -> {
+                        val eTag = connection.getHeaderField("ETag")?.trim()
+                        val jsonText = readBoundedResponseBody(connection.inputStream, 256 * 1024)
+                        val root = JSONObject(jsonText)
+                        val currentVersionObj = root.optJSONObject("current_version")
+                            ?: throw IOException("Missing current_version in AMO API response")
+                        val version = currentVersionObj.optString("version").trim()
+                        if (version.isBlank()) {
+                            throw IOException("Missing version in AMO current_version")
+                        }
+                        val fileObj = currentVersionObj.optJSONObject("file")
+                            ?: currentVersionObj.optJSONArray("files")?.optJSONObject(0)
+                            ?: throw IOException("Missing file object in AMO current_version")
+                        val status = fileObj.optString("status").trim()
+                        if (status != "public") {
+                            throw SecurityException("AMO file status is '$status', expected 'public'")
+                        }
+                        val platform = fileObj.optString("platform", "all").trim().lowercase(java.util.Locale.ROOT)
+                        if (platform !in setOf("all", "android")) {
+                            throw SecurityException("AMO file platform '$platform' is not supported")
+                        }
+                        val size = fileObj.optLong("size", -1L)
+                        if (size !in 1L..20_000_000L) {
+                            throw SecurityException("AMO file size out of bounds: $size")
+                        }
+                        val rawHash = fileObj.optString("hash").trim()
+                        val hashMatch = Regex("""^sha256:([0-9a-fA-F]{64})$""").find(rawHash)
+                            ?: throw SecurityException("Invalid AMO hash format: $rawHash")
+                        val expectedSha256 = hashMatch.groupValues[1].lowercase(java.util.Locale.ROOT)
+                        val downloadUrl = fileObj.optString("url").trim()
+                        val parsedDownloadUrl = validateAmoMetadataUrl(downloadUrl, APPROVED_AMO_METADATA_HOSTS)
+
+                        val info = AmoReleaseInfo(
+                            version = version,
+                            downloadUrl = parsedDownloadUrl.toString(),
+                            expectedSha256 = expectedSha256,
+                            size = size,
+                            eTag = eTag,
+                        )
+                        if (continuation.isActive) {
+                            runCatching { continuation.resumeWith(Result.success(info)) }
+                        }
+                    }
+                    304 -> {
+                        // Clean cached result
+                        if (continuation.isActive) {
+                            runCatching { continuation.resumeWith(Result.success(null)) }
+                        }
+                    }
+                    404 -> throw IOException("Add-on not found on AMO (HTTP 404)")
+                    429 -> throw IOException("AMO API rate limit reached (HTTP 429)")
+                    else -> throw IOException("AMO returned HTTP $code")
+                }
+            } catch (error: Exception) {
+                if (continuation.isActive) {
+                    runCatching { continuation.resumeWith(Result.failure(error)) }
+                }
+            } finally {
+                connectionRef.getAndSet(null)?.disconnect()
+                connection?.disconnect()
+            }
+        })
+    }
 }

@@ -71,7 +71,7 @@ class SubtitleArchitectureTests {
                 downloadSubtitles = true,
             ),
             state = JobState.DONE,
-            detail = "Saved to Downloads/VRKA (subtitles rate-limited)",
+            detail = "Saved to Downloads/Mi5G Dl (subtitles rate-limited)",
             subtitleStatus = SubtitleStatus.FAILED,
             outputUris = listOf("/sdcard/Download/VRKA/test.mp4"),
         )

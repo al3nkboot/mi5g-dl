@@ -60,7 +60,7 @@ object PlaylistRules {
 
     /** Batch progress; a retried item replaces its earlier failed job (latest job per URL wins). */
     fun progress(jobs: List<DownloadJob>, group: String): Progress {
-        val latest = jobs.filter { it.request.playlistGroup == group }
+        val latest = jobs.filter { it.request.playlistGroupId == group || it.playlistGroupId == group }
             .groupBy { it.request.url }.values.map { list -> list.maxBy { it.createdAt } }
         return Progress(
             total = latest.size,

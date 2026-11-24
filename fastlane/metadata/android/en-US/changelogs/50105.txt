@@ -1,0 +1,9 @@
+VRKA 5.1.5 release highlights:
+
+- Playlist downloads: Playlists are expanded into individual download jobs with concurrent downloading and separate progress tracking.
+- Playlist selection: Choose between downloading an entire playlist or just a single video for composite links.
+- File saving reliability: Improved MediaStore publication and recovery to protect completed downloads.
+- Updater improvements: Smooth update checks when already on the latest version.
+- Android 16 notifications: Improved download handling and separate notifications for concurrent downloads.
+- Updated branding: Transparent purple VRKA wordmark on the Download page.
+- Security & fixes: Cryptographic verification for uBlock Origin updates and queue completion fixes.

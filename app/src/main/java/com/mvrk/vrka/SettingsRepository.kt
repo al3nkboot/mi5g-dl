@@ -32,7 +32,6 @@ data class AppSettings(
     val defaultQuality: VideoQuality = VideoQuality.BEST,
     val defaultAudioFormat: AudioFormat = AudioFormat.MP3,
     val defaultMp3Bitrate: Int = 320,
-    // Mi5G Dl 1.1.2: Nightly by default — yt-dlp recommends nightly builds for YouTube reliability.
     val updatePreference: UpdatePreference = UpdatePreference.NIGHTLY,
     val concurrency: Int = 1,
     val concurrentDownloadsEnabled: Boolean = false,
@@ -41,16 +40,22 @@ data class AppSettings(
     val customCommandMode: Boolean = false,
     val customCommandTemplates: List<YtDlpCommandTemplate> = listOf(CustomCommandPolicy.starterTemplate()),
     val selectedCustomCommandTemplateId: String = "vrka-safe-starter",
-    // Mi5G Dl 1.1.0
+    val showDownloadSizeConfirmation: Boolean = true,
+    val shareSheetPreferences: ShareSheetPreferences? = null,
     val shareSkipSheet: Boolean = false,
     val trimPreciseDefault: Boolean = false,
     val updateDailyCheck: Boolean = false,
 )
 
-class SettingsRepository(
+open class SettingsRepository internal constructor(
     private val context: Context,
-    scope: CoroutineScope,
+    scope: CoroutineScope? = null,
+    settingsFlow: StateFlow<AppSettings>? = null,
 ) {
+    constructor(context: Context, scope: CoroutineScope) : this(context, scope, null)
+
+    internal constructor(context: Context, settingsFlow: StateFlow<AppSettings>) : this(context, null, settingsFlow)
+
     private object Keys {
         val darkTheme = booleanPreferencesKey("dark_theme")
         val outputTreeUri = stringPreferencesKey("output_tree_uri")
@@ -73,29 +78,33 @@ class SettingsRepository(
         val customCommandMode = booleanPreferencesKey("custom_command_mode")
         val customCommandTemplates = stringPreferencesKey("custom_command_templates")
         val selectedCustomCommandTemplateId = stringPreferencesKey("selected_custom_command_template_id")
+        val showDownloadSizeConfirmation = booleanPreferencesKey("show_download_size_confirmation")
+        val shareSheetPreferences = stringPreferencesKey("share_sheet_preferences")
         val shareSkipSheet = booleanPreferencesKey("share_skip_sheet")
         val trimPreciseDefault = booleanPreferencesKey("trim_precise_default")
         val updateDailyCheck = booleanPreferencesKey("update_daily_check")
     }
 
-    val settings: StateFlow<AppSettings> = context.vrkaDataStore.data
+    val settings: StateFlow<AppSettings> = settingsFlow ?: context.vrkaDataStore.data
         .catch { error ->
             if (error is IOException) emit(emptyPreferences()) else throw error
         }
         .map(::mapSettings)
-        .stateIn(scope, SharingStarted.Eagerly, AppSettings())
+        .stateIn(scope!!, SharingStarted.Eagerly, AppSettings())
 
     init {
-        // Remove templates saved by older builds if they contain blocked credential,
-        // shell, or path options. Validation also runs again when a job is enqueued.
-        scope.launch {
-            context.vrkaDataStore.edit { preferences ->
-                // This legacy preference no longer controls anything: uBlock is activated only
-                // inside the Browser Fallback runtime. Remove the obsolete stored toggle.
-                preferences.remove(Keys.adBlocking)
-                val current = preferences[Keys.customCommandTemplates]
-                val safe = encodeTemplates(decodeTemplates(current))
-                if (current != safe) preferences[Keys.customCommandTemplates] = safe
+        if (scope != null) {
+            // Remove templates saved by older builds if they contain blocked credential,
+            // shell, or path options. Validation also runs again when a job is enqueued.
+            scope.launch {
+                context.vrkaDataStore.edit { preferences ->
+                    // This legacy preference no longer controls anything: uBlock is activated only
+                    // inside the Browser Fallback runtime. Remove the obsolete stored toggle.
+                    preferences.remove(Keys.adBlocking)
+                    val current = preferences[Keys.customCommandTemplates]
+                    val safe = encodeTemplates(decodeTemplates(current))
+                    if (current != safe) preferences[Keys.customCommandTemplates] = safe
+                }
             }
         }
     }
@@ -160,6 +169,12 @@ class SettingsRepository(
 
     suspend fun setCustomCommandMode(value: Boolean) = update(Keys.customCommandMode, value)
 
+    suspend fun setShowDownloadSizeConfirmation(value: Boolean) =
+        update(Keys.showDownloadSizeConfirmation, value)
+
+    suspend fun setShareSheetPreferences(value: ShareSheetPreferences) =
+        update(Keys.shareSheetPreferences, SharePreferencesCodec.encode(value))
+
     suspend fun selectCustomCommandTemplate(id: String) =
         update(Keys.selectedCustomCommandTemplateId, id)
 
@@ -203,6 +218,7 @@ class SettingsRepository(
         }
     }
 
+
     /** Reads settings from disk (unlike [settings].value this is never the pre-load default). */
     suspend fun current(): AppSettings = mapSettings(
         context.vrkaDataStore.data.catch { if (it is IOException) emit(emptyPreferences()) else throw it }.first(),
@@ -213,8 +229,6 @@ class SettingsRepository(
     suspend fun setTrimPreciseDefault(value: Boolean) = update(Keys.trimPreciseDefault, value)
 
     suspend fun setUpdateDailyCheck(value: Boolean) = update(Keys.updateDailyCheck, value)
-
-    // ---- Mi5G Dl settings sync: raw access to the whitelisted keys only (see SyncPolicy) ----
 
     /** Current values of the synced keys that are explicitly set (defaults are not exported). */
     val syncableValues: kotlinx.coroutines.flow.Flow<Map<String, Any>> = context.vrkaDataStore.data
@@ -252,7 +266,6 @@ class SettingsRepository(
                     null -> Unit
                 }
             }
-            // keep the derived concurrency value consistent with the synced toggle/max
             val enabled = preferences[Keys.concurrentDownloadsEnabled]
             if (enabled != null) {
                 val maxConcurrent = (preferences[Keys.maxConcurrentDownloads] ?: 2).coerceIn(2, 4)
@@ -327,6 +340,10 @@ class SettingsRepository(
             customCommandMode = preferences[Keys.customCommandMode] ?: false,
             customCommandTemplates = templates,
             selectedCustomCommandTemplateId = selectedTemplate,
+            showDownloadSizeConfirmation =
+                SizeConfirmationPreference.resolve(preferences[Keys.showDownloadSizeConfirmation]),
+            shareSheetPreferences =
+                SharePreferencesCodec.decode(preferences[Keys.shareSheetPreferences]),
             shareSkipSheet = preferences[Keys.shareSkipSheet] ?: false,
             trimPreciseDefault = preferences[Keys.trimPreciseDefault] ?: false,
             updateDailyCheck = preferences[Keys.updateDailyCheck] ?: false,

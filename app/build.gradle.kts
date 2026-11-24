@@ -5,32 +5,56 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.devtools.ksp")
 }
 
-val signingPropertiesFile = providers.environmentVariable("VRKA_SIGNING_PROPERTIES")
-    .map { file(it) }
-    .orElse(providers.provider {
-        val localFile = rootProject.file("signing.properties")
-        val userHome = System.getProperty("user.home")
-        val userHomeFile = if (userHome != null) file("$userHome/.vrka-android-signing/signing.properties") else null
-        when {
-            localFile.isFile -> localFile
-            userHomeFile?.isFile == true -> userHomeFile
-            else -> null
-        }
-    })
-    .orNull
-val signingProperties = signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
-    Properties().apply { load(input) }
+val productionSigningTaskNames = setOf(
+    "assembleRelease",
+    "bundleRelease",
+    "installRelease",
+    "packageRelease",
+    "signRelease",
+    "signReleaseBundle",
+    "validateSigningReleaseBundle",
+    "validateSigningRelease",
+    "verifyReleaseSigning",
+)
+val productionSigningRequested = gradle.startParameter.taskNames.any { requestedTask ->
+    requestedTask.substringAfterLast(':') in productionSigningTaskNames
 }
-val geckoViewVersion = "156.0.20260921121718"
-val upstreamVrkaVersion = "5.0.2"
+val signingPropertiesFile = if (productionSigningRequested) {
+    providers.environmentVariable("VRKA_SIGNING_PROPERTIES")
+        .map { file(it) }
+        .orElse(providers.provider {
+            val localFile = rootProject.file("signing.properties")
+            val userHome = System.getProperty("user.home")
+            val userHomeFile = if (userHome != null) file("$userHome/.vrka-android-signing/signing.properties") else null
+            when {
+                localFile.isFile -> localFile
+                userHomeFile?.isFile == true -> userHomeFile
+                else -> null
+            }
+        })
+        .orNull
+} else {
+    null
+}
+val signingProperties = if (productionSigningRequested) {
+    signingPropertiesFile?.takeIf { it.isFile }?.inputStream()?.use { input ->
+        Properties().apply { load(input) }
+    }
+} else {
+    null
+}
+val geckoViewVersion = "159.0.20261022150525"
+val upstreamVrkaVersion = "5.1.5"
 
 extensions.configure<ApplicationExtension> {
     namespace = "com.mvrk.vrka"
     compileSdk {
         version = release(37) {
-            minorApiLevel = 1
+            // GeckoView 159 publishes minCompileSdk 37.2; this only affects compilation.
+            minorApiLevel = 2
         }
     }
 
@@ -43,8 +67,8 @@ extensions.configure<ApplicationExtension> {
         targetSdk {
             version = release(36)
         }
-        versionCode = 6
-        versionName = "1.2.1 (based on VRKA $upstreamVrkaVersion)"
+        versionCode = 7
+        versionName = "1.3.0 (based on VRKA $upstreamVrkaVersion)"
         buildConfigField("String", "GECKOVIEW_VERSION", "\"$geckoViewVersion\"")
         buildConfigField("String", "UPSTREAM_VRKA_VERSION", "\"$upstreamVrkaVersion\"")
         // Mi5G Dl: upstream VRKA GitHub self-update is disabled so VRKA APKs are never installed over this fork.
@@ -70,14 +94,22 @@ extensions.configure<ApplicationExtension> {
     }
 
     lint {
-        checkReleaseBuilds = false
-        abortOnError = false
+        // Release validation must execute lint and fail on lint errors. Existing warnings are
+        // tracked in TEST_RESULTS.md; this does not turn the warning backlog into new errors.
+        checkReleaseBuilds = true
+        abortOnError = true
+        warningsAsErrors = false
     }
 
     testOptions {
         unitTests.isReturnDefaultValues = true
-        // Mi5G Dl: needed for the Robolectric screenshot test (ScreenshotRenderTest).
         unitTests.isIncludeAndroidResources = true
+    }
+
+    sourceSets {
+        getByName("androidTest") {
+            assets.directories.add("$projectDir/schemas")
+        }
     }
 
     packaging {
@@ -94,8 +126,12 @@ extensions.configure<ApplicationExtension> {
         }
     }
 
-    if (signingProperties != null) {
-        signingConfigs {
+    signingConfigs {
+        getByName("debug") {
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+        if (signingProperties != null) {
             create("release") {
                 val storeFilePath = signingProperties.getProperty("storeFile")
                 val storeCandidate = file(storeFilePath)
@@ -130,7 +166,22 @@ extensions.configure<ApplicationExtension> {
         create("devRelease") {
             initWith(getByName("release"))
             matchingFallbacks += listOf("release")
+            isDebuggable = false
+            // Development builds are signed locally with the debug keystore; production
+            // signing stays confined to the release build type.
             signingConfig = signingConfigs.getByName("debug")
+        }
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        if (variant.name == "devRelease") {
+            variant.outputs.forEach { output ->
+                output.outputFileName.set(
+                    output.versionName.map { "VRKA-v$it-dev.apk" },
+                )
+            }
         }
     }
 }
@@ -162,6 +213,15 @@ tasks.matching { it.name in listOf("validateSigningRelease", "packageRelease") }
 }
 
 dependencies {
+    val roomVersion = "2.8.5"
+    val pagingVersion = "3.5.3"
+    implementation("androidx.room:room-runtime:$roomVersion")
+    implementation("androidx.room:room-ktx:$roomVersion")
+    implementation("androidx.room:room-paging:$roomVersion")
+    implementation("androidx.paging:paging-runtime:$pagingVersion")
+    implementation("androidx.paging:paging-compose:$pagingVersion")
+    ksp("androidx.room:room-compiler:$roomVersion")
+
     val composeBom = platform("androidx.compose:compose-bom:2026.06.00")
     implementation(composeBom)
     implementation("androidx.core:core-ktx:1.18.0")
@@ -176,13 +236,11 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
-    // Mi5G Dl: Robolectric + Compose UI test for rendering screenshots on the JVM (test-only).
-    testImplementation("org.robolectric:robolectric:4.16")
-    testImplementation("androidx.compose.ui:ui-test-junit4")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("org.json:json:20240303")
     testImplementation("xpp3:xpp3:1.1.4c")
     testImplementation("xmlpull:xmlpull:1.1.3.1")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.test:core:1.6.1")
 
     implementation("androidx.datastore:datastore-preferences:1.2.1")
     implementation("io.github.junkfood02.youtubedl-android:library:0.18.1")
@@ -202,12 +260,24 @@ dependencies {
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.room:room-testing:2.8.5")
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 // Mi5G Dl: pass -Pmi5gScreenshotsDir=<dir> to render Robolectric screenshots (ScreenshotRenderTest).
 val mi5gScreenshotsDir = providers.gradleProperty("mi5gScreenshotsDir").orElse("")
-tasks.withType<Test>().configureEach {
+tasks.withType<org.gradle.api.tasks.testing.Test>().configureEach {
     maxHeapSize = "1536m"
     systemProperty("mi5g.screenshots.dir", mi5gScreenshotsDir.get())
+    jvmArgs(
+        "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED",
+        "--add-opens=java.base/jdk.internal.access=ALL-UNNAMED",
+    )
 }

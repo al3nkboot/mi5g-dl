@@ -7,8 +7,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -39,6 +43,31 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
     private val _mediaDetectorActive = MutableStateFlow(false)
     val mediaDetectorActive: StateFlow<Boolean> = _mediaDetectorActive.asStateFlow()
 
+    /**
+     * Task-scoped browser sessions currently open. Keyed by fallback task id so a stale
+     * cleanup can never mark a newer session inactive.
+     */
+    private val openBrowserSessions = MutableStateFlow<Set<String>>(emptySet())
+    val browserSessionActive: StateFlow<Boolean> = openBrowserSessions
+        .map { it.isNotEmpty() }
+        .stateIn(scope, SharingStarted.Eagerly, false)
+
+    fun browserSessionOpened(taskId: String) {
+        openBrowserSessions.update { it + taskId }
+    }
+
+    fun browserSessionClosed(taskId: String) {
+        openBrowserSessions.update { it - taskId }
+    }
+
+    /**
+     * True when the bundled media-detector extension is available for lazy registration.
+     * Reads the APK assets only; it must never instantiate the GeckoView runtime.
+     */
+    fun hasBundledMediaDetector(): Boolean = runCatching {
+        context.assets.list(MEDIA_DETECTOR_ASSET_DIR)?.isNotEmpty() == true
+    }.getOrDefault(false)
+
     @Volatile
     var mediaDetector: WebExtension? = null
         private set
@@ -48,21 +77,62 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
     val runtime: GeckoRuntime by lazy {
         val settings = GeckoRuntimeSettings.Builder()
             .javaScriptEnabled(true)
-            .aboutConfigEnabled(false)
+            .aboutConfigEnabled(GeckoPrivacyDefaults.ABOUT_CONFIG)
+            .globalPrivacyControlEnabled(GeckoPrivacyDefaults.GLOBAL_PRIVACY_CONTROL)
+            .remoteDebuggingEnabled(GeckoPrivacyDefaults.REMOTE_DEBUGGING)
+            .debugLogging(GeckoPrivacyDefaults.DEBUG_LOGGING)
+            .consoleOutput(GeckoPrivacyDefaults.CONSOLE_OUTPUT)
+            .loginAutofillEnabled(GeckoPrivacyDefaults.LOGIN_AUTOFILL)
+            .translationsOfferPopup(GeckoPrivacyDefaults.TRANSLATION_POPUP)
+            .webManifest(GeckoPrivacyDefaults.WEB_MANIFEST)
+            .crashPullNeverShowAgain(true)
+            .experimentDelegate(NoExperimentsDelegate)
             .contentBlocking(
                 ContentBlocking.Settings.Builder()
-                    .antiTracking(ContentBlocking.AntiTracking.DEFAULT)
-                    .safeBrowsing(ContentBlocking.SafeBrowsing.DEFAULT)
-                    .cookieBehavior(ContentBlocking.CookieBehavior.ACCEPT_ALL)
-                    .enhancedTrackingProtectionLevel(ContentBlocking.EtpLevel.STRICT)
+                    .antiTracking(GeckoPrivacyDefaults.ANTI_TRACKING)
+                    .safeBrowsing(GeckoPrivacyDefaults.SAFE_BROWSING)
+                    .cookieBehavior(GeckoPrivacyDefaults.COOKIE_BEHAVIOR)
+                    .cookieBehaviorPrivateMode(GeckoPrivacyDefaults.COOKIE_BEHAVIOR)
+                    .enhancedTrackingProtectionLevel(GeckoPrivacyDefaults.ETP_LEVEL)
+                    .strictSocialTrackingProtection(GeckoPrivacyDefaults.STRICT_SOCIAL_TRACKING)
+                    .cookiePurging(GeckoPrivacyDefaults.COOKIE_PURGING)
+                    .bounceTrackingProtectionMode(GeckoPrivacyDefaults.BOUNCE_TRACKING_MODE)
+                    .queryParameterStrippingEnabled(GeckoPrivacyDefaults.QUERY_PARAMETER_STRIPPING)
+                    .queryParameterStrippingPrivateBrowsingEnabled(
+                        GeckoPrivacyDefaults.QUERY_PARAMETER_STRIPPING,
+                    )
+                    .emailTrackerBlockingPrivateMode(
+                        GeckoPrivacyDefaults.EMAIL_TRACKER_BLOCKING_PRIVATE_MODE,
+                    )
                     .build()
             )
             .build()
 
         val instance = GeckoRuntime.create(context.applicationContext, settings)
+        // GeckoView only collects usage telemetry after the embedder opts in. Keep the
+        // preference explicitly false so an engine-side default can never turn it on.
+        instance.notifyTelemetryPrefChanged(GeckoPrivacyDefaults.TELEMETRY)
         setupPromptDelegate(instance)
         _isReady.value = true
         instance
+    }
+
+    private object NoExperimentsDelegate : org.mozilla.geckoview.ExperimentDelegate {
+        override fun onGetExperimentFeature(feature: String): GeckoResult<org.json.JSONObject> =
+            GeckoResult.fromException(
+                org.mozilla.geckoview.ExperimentDelegate.ExperimentException(
+                    org.mozilla.geckoview.ExperimentDelegate.ExperimentException.ERROR_FEATURE_NOT_FOUND,
+                ),
+            )
+
+        override fun onRecordExposureEvent(feature: String): GeckoResult<Void> =
+            GeckoResult.fromValue(null)
+
+        override fun onRecordExperimentExposureEvent(slug: String, feature: String): GeckoResult<Void> =
+            GeckoResult.fromValue(null)
+
+        override fun onRecordMalformedConfigurationEvent(slug: String, feature: String): GeckoResult<Void> =
+            GeckoResult.fromValue(null)
     }
 
     private fun setupPromptDelegate(runtimeInstance: GeckoRuntime) {
@@ -121,9 +191,15 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
                     withTimeout(timeoutMs) {
                         val controller = runtime.webExtensionController
                         removeRetiredExtension(controller)
-                        seedUblockIfMissing()
-                        val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
-                        val ublockXpi = java.io.File(xpiDir, "ublock.xpi")
+                        val ublockXpi = withContext(Dispatchers.IO) {
+                            seedUblockIfMissing()
+                            val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+                            java.io.File(xpiDir, "ublock.xpi").also { file ->
+                                if (file.exists() && file.length() > 0L) {
+                                    verifyApprovedUblockXpi(file)
+                                }
+                            }
+                        }
 
                         // 1. Install & Register Media Detector WebExtension (internal bridge)
                         if (!_mediaDetectorActive.value) {
@@ -243,67 +319,76 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         xpiFile: java.io.File,
         expectedId: String,
         expectedVersion: String,
-    ): WebExtension = withContext(Dispatchers.Main) {
+    ): WebExtension = withContext(Dispatchers.IO) {
         if (!xpiFile.exists() || xpiFile.length() == 0L) {
             throw java.io.FileNotFoundException("XPI file does not exist or is empty: ${xpiFile.absolutePath}")
         }
-        val controller = runtime.webExtensionController
-        ensurePromptDelegate(controller)
-        val fileUri = "file://${xpiFile.absolutePath}"
-        Log.i(TAG, "Installing WebExtension $expectedId from $fileUri...")
+        verifyExtensionXpi(xpiFile, expectedId, expectedVersion)
+        withContext(Dispatchers.Main) {
+            val controller = runtime.webExtensionController
+            ensurePromptDelegate(controller)
+            val fileUri = "file://${xpiFile.absolutePath}"
+            Log.i(TAG, "Installing WebExtension $expectedId from $fileUri...")
 
-        val extension = installExtensionInternal(controller, fileUri, expectedId)
-            ?: throw IllegalStateException("GeckoView WebExtensionController returned null for $expectedId")
+            val extension = installExtensionInternal(controller, fileUri, expectedId)
+                ?: throw IllegalStateException("GeckoView WebExtensionController returned null for $expectedId")
 
-        controller.setAllowedInPrivateBrowsing(extension, true).awaitResult()
+            controller.setAllowedInPrivateBrowsing(extension, true).awaitResult()
 
-        // Read-back verification from GeckoView runtime
-        val installedList = controller.list().awaitResult() ?: emptyList()
-        val confirmedExt = installedList.firstOrNull { it.id == expectedId } ?: extension
+            // Read-back verification from GeckoView runtime
+            val installedList = controller.list().awaitResult() ?: emptyList()
+            val confirmedExt = installedList.firstOrNull { it.id == expectedId } ?: extension
 
-        val actualId = confirmedExt.id
-        val actualVersion = confirmedExt.metaData?.version?.trim() ?: ""
-        val isEnabled = confirmedExt.metaData?.enabled ?: true
+            val actualId = confirmedExt.id
+            val actualVersion = confirmedExt.metaData.version.trim()
+            val isEnabled = confirmedExt.metaData.enabled
 
-        if (actualId != expectedId) {
-            throw SecurityException("Runtime verification failed: expected extension ID '$expectedId', got '$actualId'")
+            if (actualId != expectedId) {
+                throw SecurityException("Runtime verification failed: expected extension ID '$expectedId', got '$actualId'")
+            }
+            if (actualVersion.isNotBlank() && ComponentUpdateManager.cleanVersionString(actualVersion) != ComponentUpdateManager.cleanVersionString(expectedVersion)) {
+                throw IllegalStateException("Runtime verification failed: expected version '$expectedVersion', got '$actualVersion'")
+            }
+            if (!isEnabled) {
+                throw IllegalStateException("Runtime verification failed: extension $expectedId is not enabled in GeckoView")
+            }
+
+            if (expectedId == UBLOCK_ID) {
+                _uBlockActive.value = true
+            }
+            Log.i(TAG, "WebExtension verified active in GeckoView: $actualId v$actualVersion")
+            confirmedExt
         }
-        if (actualVersion.isNotBlank() && ComponentUpdateManager.cleanVersionString(actualVersion) != ComponentUpdateManager.cleanVersionString(expectedVersion)) {
-            throw IllegalStateException("Runtime verification failed: expected version '$expectedVersion', got '$actualVersion'")
-        }
-        if (!isEnabled) {
-            throw IllegalStateException("Runtime verification failed: extension $expectedId is not enabled in GeckoView")
-        }
-
-        if (expectedId == UBLOCK_ID) {
-            _uBlockActive.value = true
-        }
-        Log.i(TAG, "WebExtension verified active in GeckoView: $actualId v$actualVersion")
-        confirmedExt
     }
 
     /**
      * Restores previous known-good extension state in GeckoView if an update or verification fails.
      */
-    suspend fun rollbackExtension(previousXpi: java.io.File?, extensionId: String) = withContext(Dispatchers.Main) {
-        val controller = runtime.webExtensionController
-        ensurePromptDelegate(controller)
+    suspend fun rollbackExtension(previousXpi: java.io.File?, extensionId: String) = withContext(Dispatchers.IO) {
         runCatching {
-            if (previousXpi != null && previousXpi.exists() && previousXpi.length() > 0L) {
-                val restored = installExtensionInternal(controller, "file://${previousXpi.absolutePath}", extensionId)
-                if (restored != null) {
-                    controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
-                }
+            val verifiedRestoreXpi = if (
+                previousXpi != null &&
+                previousXpi.exists() &&
+                previousXpi.length() > 0L &&
+                runCatching { verifyExtensionXpi(previousXpi, extensionId, "") }.isSuccess
+            ) {
+                previousXpi
             } else {
                 val assetName = "ublock.xpi"
-                val targetXpi = java.io.File(context.filesDir, "extensions/xpis/$assetName")
-                runCatching {
-                    context.assets.open("extensions/$assetName").use { input ->
-                        targetXpi.outputStream().use { output -> input.copyTo(output) }
-                    }
+                val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
+                val targetXpi = java.io.File(xpiDir, assetName)
+                if (targetXpi.exists()) targetXpi.delete()
+                seedBundledExtensionIfMissing(assetName)
+                targetXpi.takeIf { it.exists() && it.length() > 0L }?.also {
+                    verifyExtensionXpi(it, extensionId, "")
                 }
-                if (targetXpi.exists() && targetXpi.length() > 0L) {
-                    val restored = installExtensionInternal(controller, "file://${targetXpi.absolutePath}", extensionId)
+            }
+
+            if (verifiedRestoreXpi != null) {
+                withContext(Dispatchers.Main) {
+                    val controller = runtime.webExtensionController
+                    ensurePromptDelegate(controller)
+                    val restored = installExtensionInternal(controller, "file://${verifiedRestoreXpi.absolutePath}", extensionId)
                     if (restored != null) {
                         controller.setAllowedInPrivateBrowsing(restored, true).awaitResult()
                         if (extensionId == UBLOCK_ID) {
@@ -326,17 +411,72 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         seedBundledExtensionIfMissing("ublock.xpi")
     }
 
+    private fun verifyApprovedUblockXpi(xpiFile: java.io.File): SecureComponentUpdater.XpiValidationResult {
+        return verifyExtensionXpi(xpiFile, UBLOCK_ID, "")
+    }
+
+    private fun verifyExtensionXpi(
+        xpiFile: java.io.File,
+        expectedId: String,
+        expectedVersion: String,
+    ): SecureComponentUpdater.XpiValidationResult {
+        val result = XpiSignatureVerifier.verifyXpi(
+            xpiFile = xpiFile,
+            expectedId = expectedId,
+            expectedVersion = expectedVersion,
+            installedGeckoVersion = SecureComponentUpdater.getInstalledGeckoViewVersion(),
+            trustedCaSpkiSha256 = SecureComponentUpdater.TRUSTED_EXTENSION_CA_SPKI_SHA256,
+        )
+        if (expectedId == UBLOCK_ID) {
+            val cleanVer = ComponentUpdateManager.cleanVersionString(result.version)
+            if (ComponentUpdateManager.isNewerVersion(SecureComponentUpdater.BUNDLED_UBLOCK_VERSION, cleanVer)) {
+                throw SecurityException(
+                    "Extension version v$cleanVer is below bundled floor v${SecureComponentUpdater.BUNDLED_UBLOCK_VERSION} for $expectedId"
+                )
+            }
+            if (cleanVer == SecureComponentUpdater.BUNDLED_UBLOCK_VERSION) {
+                val actualSha = XpiSignatureVerifier.sha256Hex(xpiFile)
+                if (!actualSha.equals(SecureComponentUpdater.BUNDLED_UBLOCK_SHA256, ignoreCase = true)) {
+                    throw SecurityException(
+                        "SHA-256 mismatch for bundled ublock v$cleanVer: expected ${SecureComponentUpdater.BUNDLED_UBLOCK_SHA256}, got $actualSha"
+                    )
+                }
+            }
+        }
+        return result
+    }
+
     private fun seedBundledExtensionIfMissing(assetName: String) {
         val xpiDir = java.io.File(context.filesDir, "extensions/xpis")
         if (!xpiDir.exists()) xpiDir.mkdirs()
         val targetXpi = java.io.File(xpiDir, assetName)
-        if (!targetXpi.exists() || targetXpi.length() == 0L) {
-            runCatching {
-                context.assets.open("extensions/$assetName").use { input ->
-                    targetXpi.outputStream().use { output -> input.copyTo(output) }
-                }
-                Log.i(TAG, "Seeded bundled $assetName (${targetXpi.length()} bytes)")
+        if (targetXpi.exists() && targetXpi.length() > 0L) {
+            val valid = runCatching {
+                verifyApprovedUblockXpi(targetXpi)
+                true
+            }.onFailure { err ->
+                Log.w(TAG, "Extension signature validation failed for active $assetName (${err.message}); deleting and re-seeding bundled XPI")
+            }.getOrDefault(false)
+            if (valid) return
+            targetXpi.delete()
+        }
+
+        val tmpXpi = java.io.File(xpiDir, "$assetName.seed.tmp")
+        runCatching {
+            if (tmpXpi.exists()) tmpXpi.delete()
+            context.assets.open("extensions/$assetName").use { input ->
+                tmpXpi.outputStream().use { output -> input.copyTo(output) }
             }
+            verifyApprovedUblockXpi(tmpXpi)
+            if (targetXpi.exists()) targetXpi.delete()
+            if (!tmpXpi.renameTo(targetXpi)) {
+                tmpXpi.copyTo(targetXpi, overwrite = true)
+                tmpXpi.delete()
+            }
+            Log.i(TAG, "Seeded and cryptographically verified bundled $assetName (${targetXpi.length()} bytes)")
+        }.onFailure { err ->
+            if (tmpXpi.exists()) tmpXpi.delete()
+            Log.e(TAG, "Failed to verify/seed bundled $assetName: ${err.message}", err)
         }
     }
 
@@ -378,6 +518,7 @@ class GeckoRuntimeManager private constructor(private val context: Context) {
         const val UBLOCK_ID = "uBlock0@raymondhill.net"
         const val MEDIA_DETECTOR_ID = "media-detector@vrka.mvrk.com"
         private const val RETIRED_WEB_EXTENSION_ID = "{e3ec0551-9bfa-4233-b9dd-6b36f6a80962}"
+        private const val MEDIA_DETECTOR_ASSET_DIR = "extensions/media-detector"
 
         @Volatile
         private var INSTANCE: GeckoRuntimeManager? = null

@@ -56,7 +56,7 @@ class PlaylistRulesTest {
     }
 
     private fun job(id: String, url: String, state: JobState, at: Long, group: String = "g") =
-        DownloadJob(id = id, request = DownloadRequest(url = url, playlistGroup = group, playlistFolder = "F"), state = state, createdAt = at)
+        DownloadJob(id = id, request = DownloadRequest(url = url, playlistGroupId = group, playlistFolder = "F"), state = state, createdAt = at)
 
     @Test fun progressCountsLatestJobPerItemAndKeepsGoingAfterFailure() {
         val jobs = listOf(
@@ -81,9 +81,10 @@ class PlaylistRulesTest {
         JobStore(f).save(listOf(job("1", "u1", JobState.DONE, 1)))
         assertEquals("F", JobStore(f).load().single().request.playlistFolder)
         // 1.1.2 record: no playlist fields.
-        val arr = JSONArray(f.readText()); arr.getJSONObject(0).getJSONObject("request").apply { remove("playlistGroup"); remove("playlistFolder") }
-        f.writeText(arr.toString())
+        val arr = org.json.JSONObject(f.readText()).getJSONArray("jobs")
+        arr.getJSONObject(0).getJSONObject("request").apply { remove("playlistGroup"); remove("playlistGroupId"); remove("playlistFolder") }
+        f.writeText(arr.toString()) // legacy bare array
         val back = JobStore(f).load().single()
-        assertEquals("", back.request.playlistGroup); assertEquals("", back.request.playlistFolder)
+        assertEquals(null, back.request.playlistGroupId); assertEquals("", back.request.playlistFolder)
     }
 }
