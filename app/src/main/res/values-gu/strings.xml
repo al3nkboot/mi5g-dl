@@ -2,8 +2,8 @@
 <resources>
     <string name="about_author">MVRK દ્વારા</string>
     <string name="about_github">GitHub</string>
-    <string name="about_logo_desc">VRKA લોગો</string>
-    <string name="about_version">VRKA v%1$s</string>
+    <string name="about_logo_desc">Mi5G Dl લોગો</string>
+    <string name="about_version">Mi5G Dl v%1$s</string>
     <string name="action_delete">કાઢી નાખો</string>
     <string name="action_interact">સંવાદ કરો</string>
     <string name="action_open">ખોલો</string>
@@ -16,7 +16,7 @@
     <string name="app_update_downloading">સંસ્કરણ %1$s ડાઉનલોડ થઈ રહ્યું છે</string>
     <string name="app_update_notification_channel">એપ અપડેટ્સ</string>
     <string name="app_update_notification_channel_description">એપ્લિકેશન અપડેટ ડાઉનલોડ પ્રગતિ અને ઇન્સ્ટોલ ચેતવણીઓ</string>
-    <string name="app_update_ready_message">VRKA Android %1$s ઇન્સ્ટોલ કરવા માટે તૈયાર છે.</string>
+    <string name="app_update_ready_message">Mi5G Dl %1$s ઇન્સ્ટોલ કરવા માટે તૈયાર છે.</string>
     <string name="app_update_ready_title">અપડેટ તૈયાર છે</string>
     <string name="audio_desc_mp3">સંકુચિત ઑડિયો. પસંદ કરવા યોગ્ય બિટરેટ (128–320 kbps).</string>
     <string name="audio_desc_opus">ઉપલબ્ધ હોય ત્યારે મૂળ Opus સ્ટ્રીમ કૉપિ પસંદ કરો; બિન-Opus સોર્સ હોય તો ટ્રાન્સકોડ ફૉલબૅક.</string>
@@ -86,7 +86,7 @@
     <string name="default_download_title">શીર્ષક વગરનું ડાઉનલોડ</string>
     <string name="desc_ad_blocking">uBlock Origin • બ્રાઉઝર ફૉલબૅક પ્રાઇવસી ફિલ્ટર</string>
     <string name="desc_amoled">જ્યારે ડાર્ક મોડ સક્રિય હોય ત્યારે સંપૂર્ણ બ્લેક બેકગ્રાઉન્ડ વાપરો</string>
-    <string name="desc_auto_app_updates">એપ શરૂ થતાં VRKA અપડેટ તપાસો</string>
+    <string name="desc_auto_app_updates">એપ શરૂ થતાં Mi5G Dl અપડેટ તપાસો</string>
     <string name="desc_auto_check_launch">એપ શરૂ થાય ત્યારે yt-dlp ઘટક અપડેટ્સ માટે તપાસો</string>
     <string name="desc_browser_session_default">ટાસ્ક-આધારિત ખાનગી બ્રાઉઝર સેશન. GeckoView કૂકીઝ, સાઇટ સ્ટોરેજ, લૉગિન સેશન, કૅશ અને શોધાયેલ મીડિયા લિંક્સ સાફ કરો.</string>
     <string name="desc_check_releases">નવા વર્ઝન માટે GitHub તપાસો</string>
@@ -94,9 +94,9 @@
     <string name="desc_concurrency_warning">એકસાથે ઘણા ડાઉનલોડ ચલાવવાથી વધુ CPU, મેમરી, નેટવર્ક બૅન્ડવિડ્થ, સ્ટોરેજ અને બૅટરી વપરાય છે. સ્થિરતા માટે ડિફૉલ્ટ રીતે બંધ રાખેલ છે.</string>
     <string name="desc_concurrent_disabled">બંધ (ડાઉનલોડ એક પછી એક ક્રમમાં થશે)</string>
     <string name="desc_concurrent_enabled">ચાલુ (એકસાથે %1$d સુધી ડાઉનલોડ થશે)</string>
-    <string name="desc_custom_commands_disabled">બંધ • સામાન્ય VRKA ડાઉનલોડ વિકલ્પો વપરાશે</string>
+    <string name="desc_custom_commands_disabled">બંધ • સામાન્ય Mi5G Dl ડાઉનલોડ વિકલ્પો વપરાશે</string>
     <string name="desc_custom_commands_enabled">ચાલુ • નવા ડાઉનલોડ્સ પસંદ કરેલા નમૂનાનો ઉપયોગ કરે છે</string>
-    <string name="desc_custom_commands_helper">ટેમ્પલેટ્સ એ દલીલ સૂચિઓ છે, શેલ આદેશો નથી. VRKA સ્ટેજિંગ પાથ નિયંત્રિત કરે છે. અસુરક્ષિત આઉટપુટ પાથ, શેલ હુક્સ અને ઓળખપત્ર ધરાવતા હેડર્સ અવરોધિત છે.</string>
+    <string name="desc_custom_commands_helper">ટેમ્પલેટ્સ એ દલીલ સૂચિઓ છે, શેલ આદેશો નથી. Mi5G Dl સ્ટેજિંગ પાથ નિયંત્રિત કરે છે. અસુરક્ષિત આઉટપુટ પાથ, શેલ હુક્સ અને ઓળખપત્ર ધરાવતા હેડર્સ અવરોધિત છે.</string>
     <string name="desc_h264_disabled">ડિફૉલ્ટ રીતે બંધ; મૂળ કોડેક સાચવો</string>
     <string name="desc_h264_enabled">ડાઉનલોડ પછી બિન-H.264 વિડિઓ રૂપાંતરિત કરો; હાલનો H.264 કૉપિ થાય છે</string>
     <string name="desc_h264_helper">H.264 કન્વર્ઝન વધુ સમય લઈ શકે છે અને વધારાની બૅટરી, CPU અને કામચલાઉ સ્ટોરેજ વાપરી શકે છે. જો ડાઉનલોડ થયેલ મીડિયા પહેલેથી જ H.264 હોય, તો કન્વર્ઝન આપમેળે છોડી દેવાશે.</string>
@@ -106,7 +106,7 @@
     <string name="desc_size_confirmation_disabled">ડાઉનલોડ પહેલાં કદના અંદાજો છોડી દેવામાં આવે છે</string>
     <string name="desc_size_confirmation_enabled">દરેક ડાઉનલોડ પહેલાં મેટાડેટામાંથી ડાઉનલોડનું કદ અંદાજો</string>
     <string name="desc_size_confirmation_helper">ફક્ત yt-dlp મેટાડેટાનો ઉપયોગ કરે છે; કદ ગણતરી માટે કંઈપણ ડાઉનલોડ થતું નથી. અંદાજિત મૂલ્યોને અંદાજિત તરીકે લેબલ કરવામાં આવે છે.</string>
-    <string name="desc_up_to_date">VRKA અપ-ટૂ-ડેટ છે</string>
+    <string name="desc_up_to_date">Mi5G Dl અપ-ટૂ-ડેટ છે</string>
     <string name="desc_update_available">v%1$s ઉપલબ્ધ છે</string>
     <string name="download_size_calculating">કદ ગણવામાં આવી રહ્યું છે</string>
     <string name="download_size_calculating_with_bytes">%1$s ડાઉનલોડ થયું / કદ ગણવામાં આવી રહ્યું છે</string>
@@ -152,7 +152,7 @@
     <string name="estimate_playlist_per_item_hint">પ્લેલિસ્ટની આઇટમ્સ કતારમાં વ્યક્તિગત રીતે અંદાજવામાં આવશે અને ડાઉનલોડ થશે.</string>
     <string name="estimate_skip_future">ડાઉનલોડ પહેલાં કદના અંદાજો ન દર્શાવો</string>
     <string name="estimate_unavailable">કદ ઉપલબ્ધ નથી</string>
-    <string name="estimate_unavailable_hint">VRKA આ લિંક માટે કદ વાંચી શક્યું નથી. તમે ફરી પ્રયાસ કરી શકો છો અથવા તેમ છતાં ડાઉનલોડ કરી શકો છો.</string>
+    <string name="estimate_unavailable_hint">Mi5G Dl આ લિંક માટે કદ વાંચી શક્યું નથી. તમે ફરી પ્રયાસ કરી શકો છો અથવા તેમ છતાં ડાઉનલોડ કરી શકો છો.</string>
     <string name="eta_format_hours">%1$d:%2$02d:%3$02d બાકી</string>
     <string name="eta_format_minutes">%1$d:%2$02d બાકી</string>
     <string name="failure_auth_detail">આ સાઇટ માટે લૉગિન કરેલ બ્રાઉઝર સેશનની જરૂર હોઈ શકે છે.</string>
@@ -176,7 +176,7 @@
     <string name="fallback_status_capturing">મીડિયા કૅપ્ચર કરી રહ્યું છે (%1$d સ્ટ્રીમ મળ્યા)</string>
     <string name="fallback_status_prompt">મીડિયા સ્ટ્રીમ શરૂ કરવા માટે સર્વર પસંદ કરો / પ્લે દબાવો</string>
     <string name="font_system">સિસ્ટમ ફોન્ટ</string>
-    <string name="font_vrka">VRKA ફોન્ટ</string>
+    <string name="font_vrka">Mi5G Dl ફોન્ટ</string>
     <string name="header_custom_count">કસ્ટમ હેડર્સ (%1$d)</string>
     <string name="header_name">હેડર નામ</string>
     <string name="header_origin">ઓરિજિન URL</string>
@@ -214,13 +214,13 @@
     <string name="nav_queue">કતાર</string>
     <string name="nav_settings">સેટિંગ્સ</string>
     <string name="notification_channel_active_downloads">સક્રિય ડાઉનલોડ્સ</string>
-    <string name="notification_channel_active_downloads_description">VRKA માં શરૂ થયેલ ડાઉનલોડ્સની પ્રગતિ</string>
+    <string name="notification_channel_active_downloads_description">Mi5G Dl માં શરૂ થયેલ ડાઉનલોડ્સની પ્રગતિ</string>
     <string name="notification_channel_completed_downloads">પૂર્ણ થયેલા ડાઉનલોડ</string>
     <string name="notification_channel_completed_downloads_description">ડાઉનલોડ સાચવાય ત્યારે સૂચના</string>
     <string name="notification_download_completed">ડાઉનલોડ પૂર્ણ થયું · %1$s</string>
     <string name="notification_download_completed_files">ડાઉનલોડ પૂર્ણ થયું · %1$d ફાઇલો · %2$s</string>
-    <string name="notification_default_title">VRKA ડાઉનલોડ</string>
-    <string name="notification_downloads_interrupted_text">Android એ બેકગ્રાઉન્ડ ડાઉનલોડ સેશન બંધ કર્યું. તમારી કતાર સમીક્ષા કરવા VRKA ખોલો.</string>
+    <string name="notification_default_title">Mi5G Dl ડાઉનલોડ</string>
+    <string name="notification_downloads_interrupted_text">Android એ બેકગ્રાઉન્ડ ડાઉનલોડ સેશન બંધ કર્યું. તમારી કતાર સમીક્ષા કરવા Mi5G Dl ખોલો.</string>
     <string name="notification_downloads_interrupted_title">ડાઉનલોડ્સ થોભાવ્યાં</string>
     <string name="notification_preparing_download">ડાઉનલોડ તૈયાર થઈ રહ્યું છે</string>
     <string name="opt_auto_captions">આપોઆપ જનરેટ થયેલ કૅપ્શન્સ શામેલ કરો</string>
@@ -248,7 +248,7 @@
     <string name="pref_ad_blocking">જાહેરાત અને ટ્રેકર બ્લૉકિંગ</string>
     <string name="pref_amoled">AMOLED બ્લેક</string>
     <string name="pref_app_language">એપ ભાષા</string>
-    <string name="pref_app_language_desc">VRKA માટે તમારી પસંદગીની ભાષા પસંદ કરો</string>
+    <string name="pref_app_language_desc">Mi5G Dl માટે તમારી પસંદગીની ભાષા પસંદ કરો</string>
     <string name="pref_app_updates">એપ અપડેટ્સ</string>
     <string name="pref_auto_app_updates">આપમેળે એપ અપડેટ તપાસો</string>
     <string name="pref_auto_check_launch">એપ શરૂ થતાં આપમેળે તપાસો</string>
@@ -280,14 +280,14 @@
     <string name="readout_wav">WAV · અસંકુચિત PCM</string>
     <string name="runtime_active_title">સક્રિય રનટાઇમ</string>
     <string name="runtime_add">કસ્ટમ ફોર્ક ઉમેરો</string>
-    <string name="runtime_add_desc">જાહેર GitHub રિપોઝિટરી દાખલ કરો. VRKA ફક્ત \"yt-dlp\" નામની python zipapp એસેટ ડાઉનલોડ કરે છે, તેનું SHA-256 રેકોર્ડ કરે છે અને સક્રિય કરતાં પહેલાં એક વાર ચલાવે છે. અન્ય રિલીઝ એસેટ્સ અવગણવામાં આવે છે.</string>
+    <string name="runtime_add_desc">જાહેર GitHub રિપોઝિટરી દાખલ કરો. Mi5G Dl ફક્ત \"yt-dlp\" નામની python zipapp એસેટ ડાઉનલોડ કરે છે, તેનું SHA-256 રેકોર્ડ કરે છે અને સક્રિય કરતાં પહેલાં એક વાર ચલાવે છે. અન્ય રિલીઝ એસેટ્સ અવગણવામાં આવે છે.</string>
     <string name="runtime_add_title">કસ્ટમ yt-dlp ફોર્ક ઉમેરો</string>
     <string name="runtime_badge_custom">કસ્ટમ</string>
     <string name="runtime_badge_stock">સ્ટોક</string>
     <string name="runtime_badge_update">અપડેટ</string>
     <string name="runtime_badge_verified">ચલાવેલ</string>
     <string name="runtime_busy">રનટાઇમ કામગીરી ચાલુ છે…</string>
-    <string name="runtime_custom_warning">કસ્ટમ ફોર્ક yt-dlp ની OpenPGP સહીથી આવરી લેવાયેલા નથી. રેકોર્ડ કરેલ SHA-256 ફક્ત ફાઇલ ફેરફારો શોધે છે; તે પ્રકાશકની સત્યતાનો પુરાવો નથી. આ ઉપકરણ પર સફળતાપૂર્વક ચાલ્યા ન હોય તેવા ફોર્કને સક્રિય કરવાનો VRKA ઇનકાર કરે છે.</string>
+    <string name="runtime_custom_warning">કસ્ટમ ફોર્ક yt-dlp ની OpenPGP સહીથી આવરી લેવાયેલા નથી. રેકોર્ડ કરેલ SHA-256 ફક્ત ફાઇલ ફેરફારો શોધે છે; તે પ્રકાશકની સત્યતાનો પુરાવો નથી. આ ઉપકરણ પર સફળતાપૂર્વક ચાલ્યા ન હોય તેવા ફોર્કને સક્રિય કરવાનો Mi5G Dl ઇનકાર કરે છે.</string>
     <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">ઇન્સ્ટોલ કરો</string>
     <string name="runtime_install_failed">ઇન્સ્ટોલેશન નિષ્ફળ થયું.</string>

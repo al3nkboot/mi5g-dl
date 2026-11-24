@@ -1,5 +1,9 @@
 # Mi5G Dl modifications
 
+## 1.3.1 (versionCode 8)
+
+Restored the Mi5G Dl home-screen wordmark (1.2.1 typography, not the upstream VRKA PNG) and replaced remaining user-visible "VRKA" product-name strings in all locales. About still credits VRKA / GPL-3.0. Internal package names, log tags, theme style names, and notification channel ids are unchanged.
+
 ## 1.3.0 (versionCode 7, 2026-11-24)
 
 Merged upstream VRKA Android 5.1.5 (`0d721d0`). Kept the Mi5G identity: applicationId `com.midroid.mi5gdl`, branding, PayPal (`https://paypal.me/Midroid5G`) and VRKA/GPL-3.0 credit in About, handle `@midroid5G` only, disabled VRKA self-update, Mi5G GitHub-releases updater, optional YouTube sign-in and bot-check recovery, Drive-file sync, and precise trim.

@@ -28,8 +28,8 @@ class PackagingConfigurationTest {
 
     @Test
     fun releaseVersionConfigurationIsPreserved() {
-        assertTrue(buildFile.contains("versionCode = 7"))
-        assertTrue(buildFile.contains("1.3.0 (based on VRKA"))
+        assertTrue(buildFile.contains("versionCode = 8"))
+        assertTrue(buildFile.contains("1.3.1 (based on VRKA"))
         assertTrue(buildFile.contains("upstreamVrkaVersion = \"5.1.5\""))
         assertTrue(buildFile.contains("applicationId = \"com.midroid.mi5gdl\""))
     }

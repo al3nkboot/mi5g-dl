@@ -42,7 +42,7 @@ data class DiagnosticEntry(
     val jobAttempt: Int = 0,
 ) {
     fun toFormattedString(includeSourceUrl: Boolean = false): String = buildString {
-        appendLine("--- VRKA DIAGNOSTIC REPORT ---")
+        appendLine("--- Mi5G Dl DIAGNOSTIC REPORT ---")
         appendLine("Time: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date(timestamp))}")
         appendLine("Job ID: $jobId")
         if (jobAttempt > 0) appendLine("Attempt: $jobAttempt")

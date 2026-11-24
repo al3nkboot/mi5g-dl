@@ -322,11 +322,14 @@ internal fun HomeScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Image(
-                painter = painterResource(R.drawable.vrka_wordmark),
-                contentDescription = "VRKA",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.height(34.dp),
+            // Same header wordmark as Mi5G Dl 1.2.1: accent typography, not the upstream VRKA PNG.
+            Text(
+                text = stringResource(R.string.app_name),
+                style = MaterialTheme.typography.headlineLarge.copy(
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 2.sp,
+                ),
+                color = VrkaTokens.Accent,
             )
         }
 

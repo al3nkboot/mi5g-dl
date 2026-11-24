@@ -24,7 +24,7 @@ internal object AppUpdateNotificationFactory {
     const val READY_NOTIFICATION_ID = 50_202
 
     fun readyMessage(context: Context, version: String): String = context.getString(R.string.app_update_ready_message, version)
-    fun readyMessage(version: String): String = "VRKA Android $version is ready to install."
+    fun readyMessage(version: String): String = "Mi5G Dl $version is ready to install."
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return

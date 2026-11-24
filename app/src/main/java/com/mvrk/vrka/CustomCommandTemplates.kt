@@ -134,7 +134,7 @@ internal object CustomCommandPolicy {
             }
             val option = argument.substringBefore('=').lowercase(Locale.ROOT)
             if (isBlockedOption(option)) {
-                return "This template option is managed by VRKA or can execute another command: $option"
+                return "This template option is managed by Mi5G Dl or can execute another command: $option"
             }
             expectsValue = '=' !in argument && option in valueOptions
             expectedOption = if (expectsValue) option else ""

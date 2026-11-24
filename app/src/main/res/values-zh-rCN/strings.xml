@@ -2,8 +2,8 @@
 <resources>
     <string name="about_author">作者: MVRK</string>
     <string name="about_github">GitHub 源码仓库</string>
-    <string name="about_logo_desc">VRKA 标志</string>
-    <string name="about_version">VRKA v%1$s</string>
+    <string name="about_logo_desc">Mi5G Dl 标志</string>
+    <string name="about_version">Mi5G Dl v%1$s</string>
     <string name="action_delete">删除</string>
     <string name="action_interact">交互</string>
     <string name="action_open">打开</string>
@@ -16,7 +16,7 @@
     <string name="app_update_downloading">正在下载版本 %1$s</string>
     <string name="app_update_notification_channel">应用更新通知</string>
     <string name="app_update_notification_channel_description">应用新版本下载进度与安装就绪提示</string>
-    <string name="app_update_ready_message">VRKA Android %1$s 已就绪，点击即可安装。</string>
+    <string name="app_update_ready_message">Mi5G Dl %1$s 已就绪，点击即可安装。</string>
     <string name="app_update_ready_title">更新准备就绪</string>
     <string name="audio_desc_mp3">有损压缩音频。可选比特率 (128–320 kbps)。</string>
     <string name="audio_desc_opus">可用时优先直接复制原生 Opus 流；非 Opus 源将回退转码。</string>
@@ -86,7 +86,7 @@
     <string name="default_download_title">未命名下载</string>
     <string name="desc_ad_blocking">uBlock Origin • 浏览器后备模式专属隐私防护</string>
     <string name="desc_amoled">深色模式下使用纯黑背景以节省屏幕功耗</string>
-    <string name="desc_auto_app_updates">应用打开时自动检测 VRKA 新版本</string>
+    <string name="desc_auto_app_updates">应用打开时自动检测 Mi5G Dl 新版本</string>
     <string name="desc_auto_check_launch">应用启动时自动检查 yt-dlp 等组件更新</string>
     <string name="desc_browser_session_default">任务级私密浏览会话。清理 GeckoView Cookie、网站存储、认证会话、缓存以及已嗅探的数据。</string>
     <string name="desc_check_releases">前往 GitHub 检查新发布版本</string>
@@ -94,12 +94,12 @@
     <string name="desc_concurrency_warning">同时执行多个下载将消耗更多 CPU、内存、网络带宽和电池电量。为确保稳定性，默认保持禁用状态。</string>
     <string name="desc_concurrent_disabled">已禁用 (任务按顺序依次下载)</string>
     <string name="desc_concurrent_enabled">已启用 (最多 %1$d 个任务并行处理)</string>
-    <string name="desc_custom_commands_disabled">已禁用 • 使用 VRKA 标准下载配置</string>
+    <string name="desc_custom_commands_disabled">已禁用 • 使用 Mi5G Dl 标准下载配置</string>
     <string name="desc_custom_commands_enabled">已启用 • 新下载将应用所选参数模板</string>
-    <string name="desc_custom_commands_helper">模板为参数列表而非系统 Shell 命令。VRKA 会严格校验并屏蔽不安全的输出路径与敏感凭据选项。</string>
+    <string name="desc_custom_commands_helper">模板为参数列表而非系统 Shell 命令。Mi5G Dl 会严格校验并屏蔽不安全的输出路径与敏感凭据选项。</string>
     <string name="desc_h264_disabled">默认关闭；保留原始音视频编码</string>
     <string name="desc_h264_enabled">下载完成后将非 H.264 视频转码；原生 H.264 保持直接复制</string>
-    <string name="desc_h264_helper">H.264 转码需要更多时间和系统资源。VRKA 会检测下载编码，如果已经是 H.264 则自动跳过转码。</string>
+    <string name="desc_h264_helper">H.264 转码需要更多时间和系统资源。Mi5G Dl 会检测下载编码，如果已经是 H.264 则自动跳过转码。</string>
     <string name="desc_location_prompt">每次下载时都会提示您选择保存位置。</string>
     <string name="desc_location_selected">下载内容将直接保存到所选目录。</string>
     <string name="desc_media_detection">WebExtension • 原生直链、HLS 和 DASH 流媒体自动发现</string>
@@ -152,7 +152,7 @@
     <string name="estimate_playlist_per_item_hint">播放列表项目将在队列中单独预估和下载。</string>
     <string name="estimate_skip_future">下载前不显示大小估算</string>
     <string name="estimate_unavailable">大小不可用</string>
-    <string name="estimate_unavailable_hint">VRKA 无法读取此链接的大小。你可以重试，或仍然下载。</string>
+    <string name="estimate_unavailable_hint">Mi5G Dl 无法读取此链接的大小。你可以重试，或仍然下载。</string>
     <string name="eta_format_hours">剩余 %1$d:%2$02d:%3$02d</string>
     <string name="eta_format_minutes">剩余 %1$d:%2$02d</string>
     <string name="failure_auth_detail">来源站点可能需要已登录授权的浏览器会话。</string>
@@ -176,7 +176,7 @@
     <string name="fallback_status_capturing">正在捕获媒体 (已检测到 %1$d 个流)</string>
     <string name="fallback_status_prompt">请选择播放源 / 点击播放以启动媒体流</string>
     <string name="font_system">系统默认字体</string>
-    <string name="font_vrka">VRKA 专属字体</string>
+    <string name="font_vrka">Mi5G Dl 专属字体</string>
     <string name="header_custom_count">自定义请求头 (%1$d)</string>
     <string name="header_name">请求头名称</string>
     <string name="header_origin">Origin URL</string>
@@ -214,13 +214,13 @@
     <string name="nav_queue">队列</string>
     <string name="nav_settings">设置</string>
     <string name="notification_channel_active_downloads">正在进行的下载</string>
-    <string name="notification_channel_active_downloads_description">在 VRKA 中启动的媒体下载实时进度</string>
+    <string name="notification_channel_active_downloads_description">在 Mi5G Dl 中启动的媒体下载实时进度</string>
     <string name="notification_channel_completed_downloads">已完成的下载</string>
     <string name="notification_channel_completed_downloads_description">下载保存后提醒</string>
     <string name="notification_download_completed">下载完成 · %1$s</string>
     <string name="notification_download_completed_files">下载完成 · %1$d 个文件 · %2$s</string>
-    <string name="notification_default_title">VRKA 下载任务</string>
-    <string name="notification_downloads_interrupted_text">Android 已停止后台下载会话。打开 VRKA 查看队列。</string>
+    <string name="notification_default_title">Mi5G Dl 下载任务</string>
+    <string name="notification_downloads_interrupted_text">Android 已停止后台下载会话。打开 Mi5G Dl 查看队列。</string>
     <string name="notification_downloads_interrupted_title">下载已暂停</string>
     <string name="notification_preparing_download">正在准备下载</string>
     <string name="opt_auto_captions">包含自动生成的字幕</string>
@@ -248,7 +248,7 @@
     <string name="pref_ad_blocking">广告与跟踪拦截</string>
     <string name="pref_amoled">AMOLED 纯黑</string>
     <string name="pref_app_language">应用语言</string>
-    <string name="pref_app_language_desc">选择 VRKA 的显示语言</string>
+    <string name="pref_app_language_desc">选择 Mi5G Dl 的显示语言</string>
     <string name="pref_app_updates">应用程序更新</string>
     <string name="pref_auto_app_updates">启动时自动检查应用更新</string>
     <string name="pref_auto_check_launch">启动时自动检查</string>
@@ -280,14 +280,14 @@
     <string name="readout_wav">WAV · 无损 PCM</string>
     <string name="runtime_active_title">当前运行时</string>
     <string name="runtime_add">添加自定义分支</string>
-    <string name="runtime_add_desc">输入公开的 GitHub 仓库。VRKA 仅下载名为 \"yt-dlp\" 的 python zipapp 文件，记录其 SHA-256，并在激活前执行一次。其他发布资源会被忽略。</string>
+    <string name="runtime_add_desc">输入公开的 GitHub 仓库。Mi5G Dl 仅下载名为 \"yt-dlp\" 的 python zipapp 文件，记录其 SHA-256，并在激活前执行一次。其他发布资源会被忽略。</string>
     <string name="runtime_add_title">添加自定义 yt-dlp 分支</string>
     <string name="runtime_badge_custom">自定义</string>
     <string name="runtime_badge_stock">官方</string>
     <string name="runtime_badge_update">更新</string>
     <string name="runtime_badge_verified">已执行</string>
     <string name="runtime_busy">运行时操作进行中…</string>
-    <string name="runtime_custom_warning">自定义分支不在 yt-dlp 上游 OpenPGP 签名的覆盖范围内。记录的 SHA-256 只能检测文件变化，并不能证明发布者身份。VRKA 不会激活从未在此设备上成功执行的分支。</string>
+    <string name="runtime_custom_warning">自定义分支不在 yt-dlp 上游 OpenPGP 签名的覆盖范围内。记录的 SHA-256 只能检测文件变化，并不能证明发布者身份。Mi5G Dl 不会激活从未在此设备上成功执行的分支。</string>
     <string name="runtime_untrusted_warning">Custom runtimes are native executables that run with this application\'s privileges. Argument validation blocks unsafe yt-dlp options but does not sandbox the executable. Recorded SHA-256 only detects changes; it does not prove publisher authenticity. Continue only if you trust the publisher.</string>
     <string name="runtime_install">安装</string>
     <string name="runtime_install_failed">安装失败。</string>
@@ -308,7 +308,7 @@
     <string name="section_mp3_bitrate">MP3 比特率</string>
     <string name="section_network_headers">网络与 HTTP 请求头</string>
     <string name="section_video_resolution">视频分辨率</string>
-    <string name="settings_heading_about">关于 VRKA</string>
+    <string name="settings_heading_about">关于 Mi5G Dl</string>
     <string name="settings_heading_appearance">外观显示</string>
     <string name="settings_heading_browser">浏览器子系统</string>
     <string name="settings_heading_compatibility">兼容性与自定义命令</string>

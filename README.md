@@ -44,6 +44,7 @@ This is a **modified version** of VRKA Android, changed by @midroid5G. See
 - Self-update from this repo only (`al3nkboot/mi5g-dl`): public GitHub releases, no token required; the APK is checked for size, SHA-256, package, versionCode and signing certificate before install.
 - Optional YouTube sign-in and bot-check recovery, Drive-file settings/history sync, and a precise-cut trim option.
 - 1.3.0 (versionCode 7) merges upstream VRKA Android 5.1.5: Room/SQLite queue and history with crash-safe publishing, full Arabic (and 13 other languages) plus RTL, GeckoView 159, playlist child jobs, share sheet, and pre-download size estimates.
+- 1.3.1 (versionCode 8) restores the Mi5G Dl home-screen wordmark and remaining user-visible branding after the 5.1.5 merge.
 
 ### Releases / self-update convention
 

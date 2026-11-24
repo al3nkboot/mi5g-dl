@@ -173,7 +173,7 @@ class AppUpdateDownloadPolicyTest {
 
     @Test
     fun readyNotificationNamesVersionAndReturnsToUpdateFlow() {
-        assertEquals("VRKA Android 5.0.2 is ready to install.", AppUpdateNotificationFactory.readyMessage("5.0.2"))
+        assertEquals("Mi5G Dl 5.0.2 is ready to install.", AppUpdateNotificationFactory.readyMessage("5.0.2"))
         assertEquals("com.mvrk.vrka.action.OPEN_APP_UPDATE", com.mvrk.vrka.MainActivity.ACTION_OPEN_APP_UPDATE)
     }
 

@@ -5,7 +5,7 @@
 | Version | Supported | Notes |
 | :--- | :--- | :--- |
 | 1.3.x (based on VRKA 5.1.5) | :white_check_mark: | Current Mi5G Dl line |
-| 1.2.x and older | :x: | Upgrade to 1.3.0; queue/history are imported into Room on first launch |
+| 1.2.x and older | :x: | Upgrade to 1.3.1; queue/history are imported into Room on first launch |
 
 ## Reporting a Vulnerability
 
